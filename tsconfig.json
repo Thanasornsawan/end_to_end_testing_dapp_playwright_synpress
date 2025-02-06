@@ -1,0 +1,36 @@
+{
+    "compilerOptions": {
+      "target": "ES2023",
+      "module": "ES2022",
+      "moduleResolution": "node",
+      "lib": ["ES2023", "DOM"],
+      "strict": true,
+      "esModuleInterop": true,
+      "skipLibCheck": true,
+      "forceConsistentCasingInFileNames": true,
+      "outDir": "dist",
+      "declaration": true,
+      "resolveJsonModule": true,
+      "baseUrl": ".",
+      "paths": {
+        "@/*": ["./src/*"],
+        "@test/*": ["./test/*"],
+        "@contracts/*": ["./contracts/*"],
+        "@typechain/*": ["./typechain/*"]
+      },
+      "types": ["node", "jest", "@types/jest"],
+      "allowJs": true,
+      "noImplicitAny": true,
+      "noImplicitThis": true,
+      "strictNullChecks": true,
+      "sourceMap": true
+    },
+    "include": [
+      "hardhat.config.ts",
+      "./scripts",
+      "./test",
+      "./typechain",
+      "./frontend/src"
+    ],
+    "exclude": ["node_modules"]
+  }
