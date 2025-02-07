@@ -27,12 +27,13 @@ contract TestLendingProtocol is ReentrancyGuard, Ownable {
    }
 
    function deposit() external payable nonReentrant {
-       require(msg.value > 0, "Must deposit ETH");
-       deposits[msg.sender] += msg.value;
-       totalDeposits += msg.value;
-       weth.deposit{value: msg.value}();
-       emit Deposit(msg.sender, msg.value);
-   }
+        require(msg.value > 0, "Must deposit ETH");
+        require(msg.value <= msg.sender.balance, "Insufficient balance");
+        deposits[msg.sender] += msg.value;
+        totalDeposits += msg.value;
+        weth.deposit{value: msg.value}();
+        emit Deposit(msg.sender, msg.value);
+    }
 
    function withdraw(uint256 amount) external nonReentrant {
        require(amount > 0, "Amount must be > 0");

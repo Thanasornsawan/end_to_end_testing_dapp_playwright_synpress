@@ -1,8 +1,18 @@
-import { ethers } from "hardhat";
+// scripts/deploy/deployAndUpdateAddresses.ts
+import { ethers, network } from "hardhat";
 import fs from "fs";
 import path from "path";
 
 async function main() {
+  // Read configurations
+  const networksPath = path.join(__dirname, "../../test/config/networks.json");
+  const networkConfig = JSON.parse(fs.readFileSync(networksPath, "utf-8"));
+
+  // Get deployer account (first hardhat account)
+  const [deployer] = await ethers.getSigners();
+  console.log("Deploying contracts with account:", deployer.address);
+  console.log("Account balance:", ethers.utils.formatEther(await deployer.getBalance()));
+
   // Deploy contracts
   const LendingProtocol = await ethers.getContractFactory("TestLendingProtocol");
   const lendingProtocol = await LendingProtocol.deploy(
@@ -11,21 +21,21 @@ async function main() {
   await lendingProtocol.deployed();
   console.log("LendingProtocol deployed to:", lendingProtocol.address);
 
-  // Deploy mock tokens for local testing
+  // Deploy mock tokens
   const MockWETH = await ethers.getContractFactory("MockWETH");
   const mockWETH = await MockWETH.deploy();
   await mockWETH.deployed();
+  console.log("MockWETH deployed to:", mockWETH.address);
 
   const MockUSDC = await ethers.getContractFactory("MockUSDC");
   const mockUSDC = await MockUSDC.deploy();
   await mockUSDC.deployed();
+  console.log("MockUSDC deployed to:", mockUSDC.address);
 
-  // Read current network config
-  const networksPath = path.join(__dirname, "../test/config/networks.json");
-  const networkConfig = JSON.parse(fs.readFileSync(networksPath, "utf-8"));
-
-  // Update the "local" network configuration
-  networkConfig.local = {
+  // Update the network configuration
+  const currentNetwork = network.name === 'mainnetFork' ? 'mainnet' : network.name;
+  networkConfig[currentNetwork] = {
+    ...networkConfig[currentNetwork],
     lendingProtocol: lendingProtocol.address,
     weth: mockWETH.address,
     usdc: mockUSDC.address
@@ -33,7 +43,7 @@ async function main() {
 
   // Write back to networks.json
   fs.writeFileSync(networksPath, JSON.stringify(networkConfig, null, 2));
-  console.log("Updated networks.json");
+  console.log("Updated networks.json with new addresses");
 }
 
 main()
