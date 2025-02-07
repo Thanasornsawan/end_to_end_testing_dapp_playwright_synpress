@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
       "target": "ES2023",
-      "module": "ES2022",
+      "module": "CommonJS",
       "moduleResolution": "node",
       "lib": ["ES2023", "DOM"],
       "strict": true,
@@ -10,7 +10,7 @@
       "forceConsistentCasingInFileNames": true,
       "outDir": "dist",
       "declaration": true,
-      "resolveJsonModule": true,
+      "resolveJsonModule": true,  // Ensure this is true
       "baseUrl": ".",
       "paths": {
         "@/*": ["./src/*"],
@@ -18,7 +18,11 @@
         "@contracts/*": ["./contracts/*"],
         "@typechain/*": ["./typechain/*"]
       },
-      "types": ["node", "jest", "@types/jest"],
+      "types": [
+        "@types/node",
+        "mocha",
+        "@nomiclabs/hardhat-ethers"
+      ],
       "allowJs": true,
       "noImplicitAny": true,
       "noImplicitThis": true,
@@ -33,4 +37,4 @@
       "./frontend/src"
     ],
     "exclude": ["node_modules"]
-  }
+  }  

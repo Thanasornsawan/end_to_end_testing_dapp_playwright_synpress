@@ -1,0 +1,14 @@
+{
+  "mainnet": {
+    "weth": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    "usdc": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+  },
+  "polygon": {
+    "weth": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    "usdc": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+  },
+  "local": {
+    "weth": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+    "usdc": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+  }
+}

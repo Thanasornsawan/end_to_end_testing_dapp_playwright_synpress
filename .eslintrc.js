@@ -2,7 +2,7 @@ module.exports = {
     env: {
       browser: true,
       es2023: true,
-      jest: true,
+      mocha: true,
       node: true
     },
     plugins: ["@typescript-eslint"],
