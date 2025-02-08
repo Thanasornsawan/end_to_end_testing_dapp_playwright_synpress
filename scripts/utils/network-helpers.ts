@@ -1,4 +1,6 @@
+// network-helpers.ts
 import { network } from 'hardhat';
+import { ethers } from 'hardhat';
 
 export async function impersonateAccount(address: string) {
     await network.provider.request({
@@ -21,9 +23,26 @@ export async function resetFork(blockNumber?: number) {
 
 export async function mineBlocks(count: number) {
     for (let i = 0; i < count; i++) {
-      await network.provider.request({
-        method: "evm_mine",
-        params: [],
-      });
+      await network.provider.send("evm_mine", []); // Add empty params array
     }
+}
+
+export async function simulateNetworkPartition(blocks: number) {
+    await network.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+        ethers.utils.hexValue(ethers.utils.parseUnits("100", "gwei"))
+    ]);
+    await mineBlocks(blocks);
+}
+
+export async function simulateNodeFailure() {
+    await network.provider.send("hardhat_reset", [{
+        forking: {
+            jsonRpcUrl: process.env.MAINNET_RPC_URL
+        }
+    }]);
+}
+
+export async function increaseTime(seconds: number) {
+    await network.provider.send("evm_increaseTime", [seconds]);
+    await network.provider.send("evm_mine", []); // Add empty params array
 }

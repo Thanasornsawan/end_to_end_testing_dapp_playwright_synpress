@@ -9,6 +9,7 @@ import { TestLendingProtocol } from "../../typechain/contracts/TestLendingProtoc
 import { IWETH } from "../../typechain/contracts/interfaces/IWETH";
 import { Contract } from '@ethersproject/contracts';
 import addContext from 'mochawesome/addContext';
+import { resetFork } from '../../scripts/utils/network-helpers';
 
 // Define minimal ERC20 ABI with proper function signatures
 const ERC20_ABI = [
@@ -80,6 +81,11 @@ describe("Cross Network Testing", function() {
             ]);
             const balanceAfter = await signer.getBalance();
             console.log("Test account balance after funding:", ethers.utils.formatEther(await signer.getBalance()), "ETH");
+
+            // Verify contracts exist and are accessible
+            if (!addresses?.weth || !addresses?.usdc) {
+                throw new Error("Contract addresses not found. Please run deployment first.");
+            }
 
             // Initialize WETH
             weth = await ethers.getContractAt("IWETH", addresses.weth, signer);
@@ -247,4 +253,33 @@ describe("Cross Network Testing", function() {
             });
         });
     });
+
+    describe("Chain Reorganization", () => {
+        it("should handle state resets correctly", async function() {
+            addContext(this, {
+                title: 'Chain Reorg Test',
+                value: 'Simulating chain reorganization through state reset'
+            });
+    
+            // Make initial deposit
+            const depositAmount = ethers.utils.parseEther("1");
+            
+            // Get initial state
+            const initialBalance = await lendingProtocol.getUserDeposit(signer.address);
+            
+            // Make deposit
+            await lendingProtocol.deposit({ value: depositAmount });
+            
+            // Verify deposit
+            const afterDepositBalance = await lendingProtocol.getUserDeposit(signer.address);
+            expect(afterDepositBalance.sub(initialBalance)).to.equal(depositAmount);
+    
+            // Reset fork and ensure contract reverts
+            await resetFork();
+            await expect(
+                lendingProtocol.getUserDeposit(signer.address)
+            ).to.be.reverted;
+        });
+    });
+    
 });
