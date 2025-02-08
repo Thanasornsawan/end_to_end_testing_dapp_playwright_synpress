@@ -10,6 +10,7 @@ import { IWETH } from "../../typechain/contracts/interfaces/IWETH";
 import { Contract } from '@ethersproject/contracts';
 import addContext from 'mochawesome/addContext';
 import { resetFork } from '../../scripts/utils/network-helpers';
+import { BigNumber } from "ethers";
 
 // Define minimal ERC20 ABI with proper function signatures
 const ERC20_ABI = [
@@ -188,34 +189,211 @@ describe("Cross Network Testing", function() {
         });
     });
 
+    describe("Network Gas Cost Handling", () => {
+        let baseGasPrice: BigNumber;
+        
+        beforeEach(async function() {
+            // Get current network gas price as baseline
+            baseGasPrice = await ethers.provider.getGasPrice();
+            
+            // Skip tests if lending protocol is not available
+            if (!lendingProtocol) {
+                this.skip();
+            }
+
+            // Try to withdraw any existing deposits
+            try {
+                const existingDeposit = await lendingProtocol.getUserDeposit(signer.address);
+                if (existingDeposit.gt(0)) {
+                    await lendingProtocol.withdraw(existingDeposit);
+                }
+            } catch (error) {
+                console.log("No existing deposits to withdraw");
+            }
+        });
+
+        it("should handle different gas price scenarios", async function() {
+            const depositAmount = ethers.utils.parseEther("1");
+            const testGasPrice = baseGasPrice.mul(2); // Test with 2x gas price
+                
+            // Set network gas price for this test
+            await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+                ethers.utils.hexValue(testGasPrice)
+            ]);
+
+            // Make a deposit with specific gas settings
+            const tx = await lendingProtocol.deposit({
+                value: depositAmount,
+                gasPrice: testGasPrice,
+            });
+
+            // Wait for transaction and get receipt
+            const receipt = await tx.wait();
+
+            // Calculate total gas cost
+            const gasCost = receipt.gasUsed.mul(testGasPrice);
+
+            console.log("\nGas Price Analysis:");
+            console.log(`Gas Price: ${ethers.utils.formatUnits(testGasPrice, "gwei")} gwei`);
+            console.log(`Gas Used: ${receipt.gasUsed.toString()}`);
+            console.log(`Total Gas Cost: ${ethers.utils.formatEther(gasCost)} ETH`);
+
+            // @ts-ignore
+            addContext(this, {
+                title: 'Gas Analysis',
+                value: {
+                    gasPrice: `${ethers.utils.formatUnits(testGasPrice, "gwei")} gwei`,
+                    gasUsed: receipt.gasUsed.toString(),
+                    totalCost: `${ethers.utils.formatEther(gasCost)} ETH`
+                }
+            });
+
+            // Verify gas usage is within expected range
+            expect(receipt.gasUsed).to.be.below(300000, "Gas usage too high");
+            
+            // Verify transaction succeeded with exact deposit amount
+            const finalDeposit = await lendingProtocol.getUserDeposit(signer.address);
+            expect(finalDeposit).to.equal(depositAmount, "Deposit amount mismatch");
+        });
+
+        it("should handle gas price spikes correctly", async function() {
+            // Simulate a gas price spike
+            const spikedGasPrice = baseGasPrice.mul(10); // 10x normal gas price
+            
+            await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+                ethers.utils.hexValue(spikedGasPrice)
+            ]);
+    
+            // Try to deposit with a gas price limit
+            const depositAmount = ethers.utils.parseEther("1");
+            const maxGasPrice = baseGasPrice.mul(5); // Set max gas price at 5x base
+    
+            // This transaction should fail due to high gas price
+            let errorThrown = false;
+            try {
+                await lendingProtocol.deposit({
+                    value: depositAmount,
+                    maxFeePerGas: maxGasPrice
+                });
+            } catch (error: any) { // Type as any to access error.message
+                errorThrown = true;
+                expect(typeof error.message === 'string').to.be.true;
+                expect(error.message.toLowerCase()).to.satisfy(
+                    (msg: string) => 
+                        msg.includes('maxfeepergaspergas') || 
+                        msg.includes('max fee per gas') || 
+                        msg.includes('too low')
+                );
+            }
+            expect(errorThrown).to.be.true;
+    
+            // Verify no deposit was made
+            const finalDeposit = await lendingProtocol.getUserDeposit(signer.address);
+            expect(finalDeposit).to.equal(0);
+        });
+
+        it("should estimate gas costs accurately", async function() {
+            const depositAmount = ethers.utils.parseEther("1");
+            
+            // Get gas estimate
+            const estimatedGas = await lendingProtocol.estimateGas.deposit({
+                value: depositAmount
+            });
+
+            // Perform actual transaction
+            const tx = await lendingProtocol.deposit({
+                value: depositAmount
+            });
+            const receipt = await tx.wait();
+
+            // Verify estimate was accurate within 10% margin
+            const difference = receipt.gasUsed.sub(estimatedGas).abs();
+            const percentDiff = difference.mul(100).div(estimatedGas);
+            
+            console.log("\nGas Estimation Analysis:");
+            console.log(`Estimated Gas: ${estimatedGas}`);
+            console.log(`Actual Gas Used: ${receipt.gasUsed}`);
+            console.log(`Difference: ${percentDiff}%`);
+
+            // @ts-ignore
+            addContext(this, {
+                title: 'Gas Estimation Accuracy',
+                value: {
+                    estimated: estimatedGas.toString(),
+                    actual: receipt.gasUsed.toString(),
+                    percentageDiff: `${percentDiff}%`
+                }
+            });
+
+            expect(percentDiff).to.be.lte(10, "Gas estimation off by more than 10%");
+        });
+
+        it("should handle EIP-1559 style gas pricing", async function() {
+            // Ensure no existing deposits
+            const initialDeposit = await lendingProtocol.getUserDeposit(signer.address);
+            if (initialDeposit.gt(0)) {
+                await lendingProtocol.withdraw(initialDeposit);
+            }
+
+            const depositAmount = ethers.utils.parseEther("1");
+            
+            const baseFee = baseGasPrice;
+            const maxPriorityFeePerGas = ethers.utils.parseUnits("2", "gwei");
+            const maxFeePerGas = baseFee.add(maxPriorityFeePerGas);
+
+            const tx = await lendingProtocol.deposit({
+                value: depositAmount,
+                maxFeePerGas,
+                maxPriorityFeePerGas
+            });
+
+            const receipt = await tx.wait();
+
+            console.log("\nEIP-1559 Gas Analysis:");
+            console.log(`Base Fee: ${ethers.utils.formatUnits(baseFee, "gwei")} gwei`);
+            console.log(`Max Priority Fee: ${ethers.utils.formatUnits(maxPriorityFeePerGas, "gwei")} gwei`);
+            console.log(`Effective Gas Price: ${ethers.utils.formatUnits(receipt.effectiveGasPrice, "gwei")} gwei`);
+
+            // @ts-ignore
+            addContext(this, {
+                title: 'EIP-1559 Gas Analysis',
+                value: {
+                    baseFee: `${ethers.utils.formatUnits(baseFee, "gwei")} gwei`,
+                    maxPriorityFee: `${ethers.utils.formatUnits(maxPriorityFeePerGas, "gwei")} gwei`,
+                    effectiveGasPrice: `${ethers.utils.formatUnits(receipt.effectiveGasPrice, "gwei")} gwei`
+                }
+            });
+
+            // Get final deposit amount and verify it matches
+            const finalDeposit = await lendingProtocol.getUserDeposit(signer.address);
+            expect(finalDeposit).to.equal(depositAmount, "Deposit amount mismatch");
+        });
+    });
+
     describe("Network-Specific Features", () => {
         beforeEach(async function() {
             if (!lendingProtocol) {
                 this.skip();
             }
         });
-
-        it("should handle network-specific gas costs", async function () {
-            const gasPrice = await ethers.provider.getGasPrice();
-            const gasPriceBigInt = BigInt(gasPrice.toString());
-            console.log(`Current gas price: ${ethers.utils.formatUnits(gasPrice, "gwei")} gwei`);
-            expect(gasPriceBigInt).to.be.a("bigint");
-            // @ts-ignore
-            addContext(this, {
-                title: 'Gas Price',
-                value: `${ethers.utils.formatUnits(gasPrice, "gwei")} gwei`
-            });
-        });
-
+       
         it("should respect network-specific block times", async function () {
-            const latestBlock = await ethers.provider.getBlock("latest");
-            console.log(`Latest block timestamp: ${latestBlock.timestamp}`);
-            expect(latestBlock.timestamp).to.be.a("number");
-            // @ts-ignore
-            addContext(this, {
-                title: 'Latest block timestamp:',
-                value: latestBlock.timestamp
-            });
+            const startBlock = await ethers.provider.getBlock("latest");
+            
+            // Mine blocks with appropriate time intervals
+            for(let i = 0; i < 3; i++) {
+                // Increase time by network-specific block time
+                await ethers.provider.send("evm_increaseTime", [13]); // 13 seconds for mainnet
+                await ethers.provider.send("evm_mine", []);
+            }
+            
+            const endBlock = await ethers.provider.getBlock("latest");
+            const blockTimeDiff = endBlock.timestamp - startBlock.timestamp;
+            const numberOfBlocks = endBlock.number - startBlock.number;
+            const averageBlockTime = blockTimeDiff / numberOfBlocks;
+        
+            // Verify block time matches network expectations
+            expect(averageBlockTime).to.be.within(12, 15, "Block time outside mainnet range");
         });
     });
 
@@ -245,11 +423,37 @@ describe("Cross Network Testing", function() {
     describe("Network Specific Limits", () => {
         it("should respect network-specific transaction size limits", async function() {
             const blockLimit = await ethers.provider.getBlock("latest").then(b => b.gasLimit);
-            console.log(`Block gas limit on ${networkName}: ${blockLimit.toString()}`);
+            
+            // Test basic protocol operation gas limits
+            const singleTxGas = await lendingProtocol.estimateGas.deposit({ 
+                value: ethers.utils.parseEther("1") 
+            });
+        
+            // Current block shouldn't be near full
+            const block = await ethers.provider.getBlock("latest");
+            const blockGasUsed = block.gasUsed;
+            const blockFullnessPercent = blockGasUsed.mul(100).div(blockLimit);
+            
+            expect(blockFullnessPercent).to.be.below(95, "Block too full");
+            expect(singleTxGas).to.be.below(blockLimit, "Single tx exceeds block limit");
+        
+            console.log({
+                networkName,
+                blockLimit: blockLimit.toString(),
+                blockGasUsed: blockGasUsed.toString(),
+                blockFullnessPercent: blockFullnessPercent.toString() + '%'
+            });
+
             // @ts-ignore
             addContext(this, {
-                title: 'Block gas limit',
-                value: `Block gas limit on ${networkName}: ${blockLimit.toString()}`
+                title: 'Network Block Limits',
+                value: {
+                    network: networkName,
+                    blockGasLimit: blockLimit.toString(),
+                    singleTxGas: singleTxGas.toString(),
+                    blockGasUsed: blockGasUsed.toString(),
+                    blockFullness: blockFullnessPercent.toString() + '%'
+                }
             });
         });
     });

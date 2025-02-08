@@ -44,27 +44,6 @@ describe("Network Conditions Testing", () => {
         });
     });
 
-    describe("High Gas Congestion", () => {
-        it("should handle high gas price conditions", async function() {
-            addContext(this, {
-                title: 'Gas Price Test',
-                value: 'Testing gas price manipulation'
-            });
-
-            const baseGasPrice = await ethers.provider.getGasPrice();
-            console.log("Base gas price:", ethers.utils.formatUnits(baseGasPrice, "gwei"), "gwei");
-
-            await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", [
-                ethers.utils.hexValue(baseGasPrice.mul(2))
-            ]);
-
-            const newGasPrice = await ethers.provider.getGasPrice();
-            console.log("New gas price:", ethers.utils.formatUnits(newGasPrice, "gwei"), "gwei");
-
-            expect(newGasPrice).to.be.gt(baseGasPrice);
-        });
-    });
-
     describe("Block Time Tests", () => {
         it("should handle time advancement", async function() {
             addContext(this, {
