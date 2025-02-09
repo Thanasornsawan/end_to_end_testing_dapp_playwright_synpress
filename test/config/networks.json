@@ -1,8 +1,8 @@
 {
   "mainnet": {
-    "weth": "0x87a2688d6E41b23d802F74c6B1F06a8e8d118929",
-    "usdc": "0xDf66AB853Fc112Ec955531bd76E9079db30A0e27",
-    "lendingProtocol": "0xa7480B62a657555f6727bCdb96953bCC211FFbaC"
+    "weth": "0xC070A317F23E9A4e982e356485416251dd3Ed944",
+    "usdc": "0x6D39d71fF4ab56a4873febd34e1a3BDefc01b41e",
+    "lendingProtocol": "0xe3EF345391654121f385679613Cea79A692C2Dd8"
   },
   "polygon": {
     "weth": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",

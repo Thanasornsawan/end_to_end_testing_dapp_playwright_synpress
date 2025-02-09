@@ -21,6 +21,9 @@ interface GasReporterConfig {
   enabled?: boolean;
   currency?: string;
   excludeContracts?: string[];
+  outputJSONFile?: string;
+  outputJSON?: boolean;
+  noColors?: boolean;
 }
 
 interface CustomHardhatConfig extends HardhatUserConfig {
@@ -89,6 +92,9 @@ const config: CustomHardhatConfig = {
      enabled: process.env.REPORT_GAS !== undefined,
      currency: "USD",
      excludeContracts: ["contracts/mocks/", "contracts/libraries/"],
+     outputJSONFile: "gas-reports/hardhat-gas-report.json",
+     outputJSON: true,
+     noColors: true,
    },
    typechain: {
     outDir: "typechain",
