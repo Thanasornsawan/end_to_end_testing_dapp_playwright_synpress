@@ -23,6 +23,8 @@ interface GasReporterConfig {
   excludeContracts?: string[];
   outputJSONFile?: string;
   outputJSON?: boolean;
+  coinmarketcap?: string;
+  L1Etherscan?: string;
   noColors?: boolean;
 }
 
@@ -34,6 +36,14 @@ interface CustomHardhatConfig extends HardhatUserConfig {
 
 // Read block numbers from the JSON file (precomputed by preloadBlockNumbers.js)
 const blockNumbers = JSON.parse(fs.readFileSync("./blockNumbers.json", "utf-8"));
+
+const HARDHAT_TEST_ACCOUNTS = [
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", // Default Hardhat #0
+  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d", // Default Hardhat #1
+  "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", // Default Hardhat #2
+  "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6", // Default Hardhat #3
+  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a"  // Default Hardhat #4
+];
 
 const config: CustomHardhatConfig = {
  
@@ -50,9 +60,7 @@ const config: CustomHardhatConfig = {
     // ✅ Forked Ethereum Mainnet (no real gas needed)
     mainnetFork: {
       url: "http://127.0.0.1:8545",  // Point to local fork
-      accounts: [
-        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" // Default Hardhat account #0 private key
-      ],
+      accounts: HARDHAT_TEST_ACCOUNTS,
       forking: {
         url: process.env.MAINNET_RPC_URL || "",
         blockNumber: blockNumbers.mainnet,
@@ -91,6 +99,8 @@ const config: CustomHardhatConfig = {
    gasReporter: {
      enabled: process.env.REPORT_GAS !== undefined,
      currency: "USD",
+     L1Etherscan: process.env.ETHERSCAN_API_KEY,
+     coinmarketcap: process.env.COINMARKETCAP_API_KEY,
      excludeContracts: ["contracts/mocks/", "contracts/libraries/"],
      outputJSONFile: "gas-reports/hardhat-gas-report.json",
      outputJSON: true,

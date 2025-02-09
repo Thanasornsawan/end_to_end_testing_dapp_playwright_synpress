@@ -14,13 +14,16 @@ function formatGasData(gasReport) {
           avg: value.executionGasAverage,
           min: value.min,
           max: value.max,
-          calls: value.numberOfCalls
+          calls: value.numberOfCalls,
+          usd: value.cost
         };
       }
     });
   
     return {
-      blockGasLimit: gasReport.options.blockGasLimit,
+      blockGasLimit: `${gasReport.options.blockGasLimit} gas`,
+      tokenPrice: `${gasReport.options.tokenPrice} usd/eth`,
+      gasPrice: `${gasReport.options.gasPrice} gwei`,
       methods
     };
   }
