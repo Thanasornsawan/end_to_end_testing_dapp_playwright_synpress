@@ -7,3 +7,6 @@ node_modules
 /test-reports/
 /gas-reports/
 *.log
+/coverage/
+coverage.json
+/ctrf/

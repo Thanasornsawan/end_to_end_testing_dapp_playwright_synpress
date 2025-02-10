@@ -127,14 +127,17 @@ const config: CustomHardhatConfig = {
      },
    },
    mocha: {
-    reporter: 'mochawesome',
+    reporter: 'mocha-multi-reporters',
     reporterOptions: {
-      reportDir: './test-reports',
-      reportFilename: 'report',
-      quiet: true,
-      overwrite: true,
-      html: false,
-      json: true
+      reporterEnabled: 'mochawesome,mocha-ctrf-json-reporter',
+      mochawesomeReporterOptions: {
+        reportDir: './test-reports',
+        reportFilename: 'report',
+        quiet: true,
+        overwrite: true,
+        html: false,
+        json: true
+      }
     }
   }
 };
