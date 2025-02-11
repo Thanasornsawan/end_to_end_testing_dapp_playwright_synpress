@@ -141,6 +141,153 @@ describe("Cross Network Testing", function() {
         }
     });
 
+    describe("Interest Calculation Tests", () => {
+        const calculateExpectedInterest = (
+            principal: BigNumber,
+            timeElapsed: number,
+            interestRate: number
+        ): BigNumber => {
+            const SECONDS_PER_YEAR = BigNumber.from(365 * 24 * 60 * 60);
+            const rate = BigNumber.from(interestRate);
+            const time = BigNumber.from(timeElapsed);
+    
+            // Match contract calculation exactly:
+            // (principal * rate * time) / (SECONDS_PER_YEAR * 10000)
+            return principal
+                .mul(rate)
+                .mul(time)
+                .div(SECONDS_PER_YEAR)
+                .div(10000);
+        };
+        
+        it("should calculate interest correctly across different block times", async function() {
+            const depositAmount = ethers.utils.parseEther("100");
+            const INTEREST_RATE = 500;
+            // Initial deposit
+            await lendingProtocol.deposit({ value: depositAmount });
+            const initialTimestamp = (await ethers.provider.getBlock("latest")).timestamp;
+            // Test different block time scenarios
+            const scenarios = [
+                { description: "Fast blocks", blockTime: 10, blocks: 5 },
+                { description: "Normal blocks", blockTime: 13, blocks: 5 },
+                { description: "Slow blocks", blockTime: 15, blocks: 5 }
+            ];
+    
+            const results = [];
+    
+            for (const scenario of scenarios) {
+                const snapshotId = await ethers.provider.send("evm_snapshot", []);
+    
+                try {
+                    // Simulate time passing
+                    for(let i = 0; i < scenario.blocks; i++) {
+                        await ethers.provider.send("evm_increaseTime", [scenario.blockTime]);
+                        await ethers.provider.send("evm_mine", []);
+                    }
+    
+                    const currentBlock = await ethers.provider.getBlock("latest");
+                    const timeElapsed = currentBlock.timestamp - initialTimestamp;
+                    const totalWithInterest = await lendingProtocol.getUserDepositWithInterest(signer.address);
+                    const actualInterest = totalWithInterest.sub(depositAmount);
+                    const expectedInterest = calculateExpectedInterest(depositAmount, timeElapsed, INTEREST_RATE);
+                    // Use larger tolerance due to block timestamp variations
+                    const tolerance = expectedInterest.mul(5).div(100); // 5% tolerance
+    
+                    // Store results for reporting
+                    results.push({
+                        scenario: scenario.description,
+                        timeElapsed: `${timeElapsed} seconds`,
+                        principal: `${ethers.utils.formatEther(depositAmount)} ETH`,
+                        expectedInterest: `${ethers.utils.formatEther(expectedInterest)} ETH`,
+                        actualInterest: `${ethers.utils.formatEther(actualInterest)} ETH`,
+                        tolerance: `${ethers.utils.formatEther(tolerance)} ETH`
+                    });
+    
+                    expect(actualInterest).to.be.gte(
+                        expectedInterest.sub(tolerance),
+                        `Interest too low for ${scenario.description}`
+                    );
+                    expect(actualInterest).to.be.lte(
+                        expectedInterest.add(tolerance),
+                        `Interest too high for ${scenario.description}`
+                    );
+    
+                    // Additional checks
+                    expect(totalWithInterest).to.be.gt(depositAmount);
+    
+                } finally {
+                    await ethers.provider.send("evm_revert", [snapshotId]);
+                }
+            }
+    
+            // @ts-ignore
+            addContext(this, {
+                title: 'Interest Calculation Results',
+                value: results
+            });
+        });
+    
+        it("should handle extreme time changes", async function() {
+            const depositAmount = ethers.utils.parseEther("100");
+            await lendingProtocol.deposit({ value: depositAmount });
+    
+            const ONE_MONTH = 30 * 24 * 60 * 60;
+            await ethers.provider.send("evm_increaseTime", [ONE_MONTH]);
+            await ethers.provider.send("evm_mine", []);
+    
+            const totalWithInterest = await lendingProtocol.getUserDepositWithInterest(signer.address);
+            const actualInterest = totalWithInterest.sub(depositAmount);
+    
+            // @ts-ignore
+            addContext(this, {
+                title: 'Extreme Time Change Results',
+                value: {
+                    timeframe: '30 days',
+                    depositAmount: `${ethers.utils.formatEther(depositAmount)} ETH`,
+                    totalWithInterest: `${ethers.utils.formatEther(totalWithInterest)} ETH`,
+                    interestEarned: `${ethers.utils.formatEther(actualInterest)} ETH`
+                }
+            });
+    
+            expect(actualInterest).to.be.gt(0, "No interest accrued");
+            expect(totalWithInterest).to.be.gt(depositAmount, "Total should be more than deposit");
+        });
+    
+        it("should calculate interest correctly during network congestion", async function() {
+            const depositAmount = ethers.utils.parseEther("100");
+            await lendingProtocol.deposit({ value: depositAmount });
+    
+            await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", [
+                ethers.utils.hexValue(ethers.utils.parseUnits("100", "gwei"))
+            ]);
+    
+            const blockTimes = [];
+            for(let i = 0; i < 5; i++) {
+                const blockTime = Math.floor(Math.random() * 5) + 15;
+                blockTimes.push(blockTime);
+                await ethers.provider.send("evm_increaseTime", [blockTime]);
+                await ethers.provider.send("evm_mine", []);
+            }
+    
+            const totalWithInterest = await lendingProtocol.getUserDepositWithInterest(signer.address);
+            const actualInterest = totalWithInterest.sub(depositAmount);
+    
+            // @ts-ignore
+            addContext(this, {
+                title: 'Network Congestion Test Results',
+                value: {
+                    depositAmount: `${ethers.utils.formatEther(depositAmount)} ETH`,
+                    totalWithInterest: `${ethers.utils.formatEther(totalWithInterest)} ETH`,
+                    interestEarned: `${ethers.utils.formatEther(actualInterest)} ETH`,
+                    gasPrice: '100 gwei',
+                    blockTimes: blockTimes.map(time => `${time} seconds`)
+                }
+            });
+    
+            expect(totalWithInterest).to.be.gt(depositAmount, "Interest should accrue during congestion");
+        });
+    });
+
     describe("Network Configuration", () => {
         it("should have correct WETH address", async function() {
             const symbol = await weth.symbol();
@@ -216,7 +363,7 @@ describe("Cross Network Testing", function() {
             const depositAmount = ethers.utils.parseEther("1");
             const testGasPrice = baseGasPrice.mul(2); // Test with 2x gas price
                 
-            // Set network gas price for this test
+            // Set network gas price for simulate busy network conditions
             await ethers.provider.send("hardhat_setNextBlockBaseFeePerGas", [
                 ethers.utils.hexValue(testGasPrice)
             ]);

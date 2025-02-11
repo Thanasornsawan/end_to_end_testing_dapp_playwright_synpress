@@ -11,15 +11,17 @@ contract TestLendingProtocol is ReentrancyGuard, Ownable {
    IWETH public immutable weth;
    mapping(address => uint256) public deposits;
    mapping(address => uint256) public borrows;
+   mapping(address => uint256) public lastDepositTime;  // Track when each user deposited
    uint256 public constant INTEREST_RATE = 500; // 5% APR
    uint256 public constant COLLATERAL_RATIO = 15000; // 150%
    uint256 public totalDeposits;
    uint256 public totalBorrows;
 
-   event Deposit(address indexed user, uint256 amount);
-   event Withdraw(address indexed user, uint256 amount);
-   event Borrow(address indexed user, uint256 amount);
-   event Repay(address indexed user, uint256 amount);
+   // Core functions:
+   event Deposit(address indexed user, uint256 amount);  // Users can deposit ETH
+   event Withdraw(address indexed user, uint256 amount); // Users can withdraw ETH
+   event Borrow(address indexed user, uint256 amount);   // Users can borrow ETH
+   event Repay(address indexed user, uint256 amount);    // Users can repay loans
 
    constructor(address _weth) {
        require(_weth != address(0), "Invalid WETH address");
@@ -30,6 +32,7 @@ contract TestLendingProtocol is ReentrancyGuard, Ownable {
         require(msg.value > 0, "Must deposit ETH");
         require(msg.value <= msg.sender.balance, "Insufficient balance");
         deposits[msg.sender] += msg.value;
+        lastDepositTime[msg.sender] = block.timestamp;  
         totalDeposits += msg.value;
         weth.deposit{value: msg.value}();
         emit Deposit(msg.sender, msg.value);
@@ -77,6 +80,25 @@ contract TestLendingProtocol is ReentrancyGuard, Ownable {
        weth.deposit{value: msg.value}();
        emit Repay(msg.sender, msg.value);
    }
+
+   function getUserDepositWithInterest(address user) external view returns (uint256) {
+        uint256 depositAmount = deposits[user];
+        if (depositAmount == 0) return 0;
+        
+        uint256 timeElapsed = block.timestamp - lastDepositTime[user];
+        
+        // Calculate interest using same formula as test
+        // (principal * rate * time) / (SECONDS_PER_YEAR * BASIS_POINTS)
+        uint256 SECONDS_PER_YEAR = 365 days;
+        uint256 interest = (depositAmount * INTEREST_RATE * timeElapsed) / 
+                          (SECONDS_PER_YEAR * 10000);
+        
+        return depositAmount + interest;
+    }
+
+    function getInterestRate() external pure returns (uint256) {
+        return INTEREST_RATE;
+    }
 
    function getAvailableLiquidity() public view returns (uint256) {
        return weth.balanceOf(address(this));
