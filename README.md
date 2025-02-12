@@ -19,7 +19,7 @@ npm install prisma --save-dev
 docker-compose up -d
 ```
 
-![db1](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set1.png?raw=true)
+![db4](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set4.png?raw=true)
 **Push schema to database**
 ```sh
 npx prisma db push
@@ -41,4 +41,4 @@ npx prisma db pull
 npx ts-node test-db-connection.ts
 ```
 
-![db4](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set4.png?raw=true)
+![db1](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set1.png?raw=true)
