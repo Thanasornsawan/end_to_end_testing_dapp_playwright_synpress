@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Market {
+  id              String           @id
+  address         String           @unique
+  totalLiquidity  Decimal
+  totalBorrowed   Decimal
+  utilizationRate Decimal
+  lastUpdate      DateTime
+  ipfsHash        String?
+  events          Event[]
+  activities      MarketActivity[]
+  positions       Position[]
+  riskMetrics     RiskMetric[]
+
+  @@index([address])
+}
+
+model MarketActivity {
+  id          String   @id @default(uuid())
+  marketId    String
+  timestamp   DateTime
+  eventType   String
+  amount      Decimal
+  txHash      String
+  blockNumber Int
+  metadata    Json?
+  market      Market   @relation(fields: [marketId], references: [id])
+
+  @@index([marketId, timestamp])
+}
+
+model User {
+  id          String         @id
+  address     String         @unique
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  positions   Position[]
+  riskMetrics RiskMetric[]
+  activities  UserActivity[]
+
+  @@index([address])
+}
+
+model UserActivity {
+  id           String   @id @default(uuid())
+  userId       String
+  timestamp    DateTime
+  activityType String
+  amount       Decimal
+  txHash       String
+  blockNumber  Int
+  metadata     Json?
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp])
+}
+
+model Position {
+  id              String   @id @default(uuid())
+  userId          String
+  marketId        String
+  depositAmount   Decimal
+  borrowAmount    Decimal
+  lastUpdate      DateTime
+  healthFactor    Decimal
+  liquidationRisk Decimal
+  collateralValue Decimal
+  interestRate    Decimal
+  status          String
+  market          Market   @relation(fields: [marketId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, marketId])
+  @@index([healthFactor])
+}
+
+model RiskMetric {
+  id              String   @id @default(uuid())
+  userId          String
+  marketId        String
+  healthFactor    Decimal
+  liquidationRisk Decimal
+  timestamp       DateTime
+  metadata        Json?
+  market          Market   @relation(fields: [marketId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, marketId])
+  @@index([healthFactor])
+}
+
+model Event {
+  id          String    @id
+  marketId    String
+  eventType   String
+  txHash      String
+  blockNumber Int
+  timestamp   DateTime
+  data        Json
+  processed   Boolean   @default(false)
+  processedAt DateTime?
+  status      String
+  retryCount  Int       @default(0)
+  error       String?
+  market      Market    @relation(fields: [marketId], references: [id])
+
+  @@index([marketId, eventType])
+  @@index([blockNumber])
+  @@index([processed, status])
+}
+
+model APIRequest {
+  id          String    @id @default(uuid())
+  requestType String
+  endpoint    String
+  params      Json
+  status      String
+  response    Json?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+  retryCount  Int       @default(0)
+  error       String?
+
+  @@index([requestType, status])
+  @@index([createdAt])
+}
+
+model ProtocolStats {
+  id                String   @id @default(uuid())
+  timestamp         DateTime
+  totalValueLocked  Decimal
+  totalBorrowed     Decimal
+  uniqueUsers       Int
+  dailyActiveUsers  Int
+  totalTransactions Int
+  avgGasPrice       Decimal
+  networkStatus     String
+  metadata          Json?
+
+  @@index([timestamp])
+}
+
+model PriceData {
+  id         String   @id @default(uuid())
+  token      String
+  price      Decimal
+  timestamp  DateTime
+  source     String
+  confidence Decimal
+  deviation  Decimal?
+  isOutlier  Boolean  @default(false)
+
+  @@index([token, timestamp])
+  @@index([source])
+}
+
+model Configuration {
+  id          String   @id
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String
+
+  @@index([key])
+}

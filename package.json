@@ -16,7 +16,6 @@
     "test:e2e": "playwright test",
     "compile": "hardhat compile",
     "node": "hardhat node",
-    "deploy:local": "hardhat run scripts/deploy/deploy-core.js --network localhost",
     "lint": "eslint . --ext .ts,.js",
     "format": "prettier --write ."
   },
@@ -64,6 +63,7 @@
     "mochawesome-report-generator": "^6.2.0",
     "prettier": "^3.4.2",
     "prettier-plugin-solidity": "^1.4.2",
+    "prisma": "^6.3.1",
     "solhint": "^5.0.5",
     "solidity-coverage": "^0.8.14",
     "ts-jest": "^29.2.5",
@@ -73,6 +73,7 @@
     "winston": "^3.17.0"
   },
   "dependencies": {
+    "@prisma/client": "^6.3.1",
     "uuid": "^11.0.5"
   }
 }
