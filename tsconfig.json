@@ -10,7 +10,9 @@
       "forceConsistentCasingInFileNames": true,
       "outDir": "dist",
       "declaration": true,
-      "resolveJsonModule": true,  // Ensure this is true
+      "resolveJsonModule": true,
+      "isolatedModules": true,
+      "jsx": "preserve",
       "baseUrl": ".",
       "paths": {
         "@/*": ["./src/*"],
@@ -34,7 +36,8 @@
       "./scripts",
       "./test",
       "./typechain",
-      "./frontend/src"
+      "./frontend/",
+      "next-env.d.ts"
     ],
     "exclude": ["node_modules"]
   }  

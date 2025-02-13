@@ -69,7 +69,7 @@ const config: CustomHardhatConfig = {
     },
      local: {
        url: process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545",
-       chainId: 1337,
+       chainId: 31337,
      },
     // ✅ Real Ethereum Mainnet (uses real ETH)
     mainnet: {

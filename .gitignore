@@ -10,3 +10,5 @@ node_modules
 /coverage/
 coverage.json
 /ctrf/
+/frontend/.next/
+trace

@@ -5,7 +5,7 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import "mocha";
 import { Network } from '@ethersproject/networks';
-import { TestLendingProtocol } from "../../typechain/contracts/TestLendingProtocol";
+import { TestLendingProtocol } from "../../typechain/contracts/core/TestLendingProtocol";
 import { IWETH } from "../../typechain/contracts/interfaces/IWETH";
 import { Contract } from '@ethersproject/contracts';
 import addContext from 'mochawesome/addContext';

@@ -1,6 +1,6 @@
 import { ethers } from 'hardhat';
 import { expect } from "chai";
-import { TestLendingProtocol } from "../../typechain/contracts/TestLendingProtocol";
+import { TestLendingProtocol } from "../../typechain/contracts/core/TestLendingProtocol";
 import { MockWETH } from "../../typechain/contracts/mocks/MockWETH";
 import { MockUSDC } from "../../typechain/contracts/mocks/MockUSDC";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
