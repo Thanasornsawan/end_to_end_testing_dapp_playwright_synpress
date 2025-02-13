@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
@@ -15,6 +15,12 @@ import {
   } from '../utils/web3';
   import { getContractAddresses } from '../config/contracts';
 
+interface EnhancedLendingDAppProps {
+    account: string;
+    provider: ethers.providers.Web3Provider | null;
+    onConnect: () => Promise<void>;
+}
+
 interface Position {
   depositAmount: string;
   borrowAmount: string;
@@ -22,92 +28,82 @@ interface Position {
   lastUpdateTime: string;
 }
 
-const EnhancedLendingDApp = () => {
-  const [account, setAccount] = useState('');
-  const [chainId, setChainId] = useState<number>();
-  const [depositAmount, setDepositAmount] = useState('');
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [borrowAmount, setBorrowAmount] = useState('');
-  const [repayAmount, setRepayAmount] = useState('');
-  const [position, setPosition] = useState<Position | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-  const [wethAddress, setWethAddress] = useState<string | null>(null);
-
-  useEffect(() => {
-    const init = async () => {
-      const web3Provider = await connectWallet();
-      if (web3Provider) {
-        setProvider(web3Provider);
-        const network = await web3Provider.getNetwork();
-        setChainId(network.chainId);
-
-        const accounts = await web3Provider.listAccounts();
-        if (accounts[0]) {
-          setAccount(accounts[0]);
-          await initializeContract(accounts[0], web3Provider);
-        }
-      }
-    };
-    init();
-  }, []);
-
-  const initializeContract = async (
-    userAddress: string,
-    web3Provider: ethers.providers.Web3Provider
-  ) => {
-    try {
-      const { lendingProtocol } = await getContracts(web3Provider);
-      const weth = await lendingProtocol.weth();
-      setWethAddress(weth);
-      
-      // Add verification of token config
-      const tokenConfig = await lendingProtocol.tokenConfigs(weth);
-      console.log('Token config:', tokenConfig);
-      if (!tokenConfig.isSupported) {
-        setError('WETH not properly configured in contract');
-        return;
-      }
-      
-      await loadUserPosition(userAddress, web3Provider);
-    } catch (err) {
-      console.error('Error initializing contract:', err);
-      setError('Failed to initialize contract');
-    }
-  };
-
-  const loadUserPosition = async (
-    userAddress: string,
-    web3Provider: ethers.providers.Web3Provider
-  ) => {
-    try {
-      const { lendingProtocol } = await getContracts(web3Provider);
-      const weth = await lendingProtocol.weth();
-      const position = await lendingProtocol.userPositions(weth, userAddress);
-      const healthFactor = await lendingProtocol.getHealthFactor(userAddress);
+const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({ 
+    account, 
+    provider, 
+    onConnect 
+  }) => {
+    const [chainId, setChainId] = useState<number>();
+    const [depositAmount, setDepositAmount] = useState('');
+    const [withdrawAmount, setWithdrawAmount] = useState('');
+    const [borrowAmount, setBorrowAmount] = useState('');
+    const [repayAmount, setRepayAmount] = useState('');
+    const [position, setPosition] = useState<Position | null>(null);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [wethAddress, setWethAddress] = useState<string | null>(null);
   
-      setPosition({
-        depositAmount: formatEther(position.depositAmount),
-        borrowAmount: formatEther(position.borrowAmount),
-        healthFactor: formatEther(healthFactor),
-        lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000).toLocaleString()
-      });
-    } catch (err) {
-      console.error('Error loading position:', err);
-      setError('Failed to load position');
-    }
-  };
+    useEffect(() => {
+      const init = async () => {
+        if (provider && account) {
+          const network = await provider.getNetwork();
+          setChainId(network.chainId);
+          await initializeContract(account, provider);
+        }
+      };
+      init();
+    }, [provider, account]);
+
+    const initializeContract = async (
+        userAddress: string,
+        web3Provider: ethers.providers.Web3Provider
+      ) => {
+        try {
+          const { lendingProtocol } = await getContracts(web3Provider);
+          const weth = await lendingProtocol.weth();
+          setWethAddress(weth);
+          
+          // Add verification of token config
+          const tokenConfig = await lendingProtocol.tokenConfigs(weth);
+          console.log('Token config:', tokenConfig);
+          if (!tokenConfig.isSupported) {
+            setError('WETH not properly configured in contract');
+            return;
+          }
+          
+          await loadUserPosition(userAddress, web3Provider);
+        } catch (err) {
+          console.error('Error initializing contract:', err);
+          setError('Failed to initialize contract');
+        }
+    };
+
+    const loadUserPosition = async (
+        userAddress: string,
+        web3Provider: ethers.providers.Web3Provider
+      ) => {
+        try {
+          const { lendingProtocol } = await getContracts(web3Provider);
+          const weth = await lendingProtocol.weth();
+          const position = await lendingProtocol.userPositions(weth, userAddress);
+          const healthFactor = await lendingProtocol.getHealthFactor(userAddress);
+      
+          setPosition({
+            depositAmount: formatEther(position.depositAmount),
+            borrowAmount: formatEther(position.borrowAmount),
+            healthFactor: formatEther(healthFactor),
+            lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000).toLocaleString()
+          });
+        } catch (err) {
+          console.error('Error loading position:', err);
+          setError('Failed to load position');
+        }
+    };
 
   const handleConnect = async () => {
     try {
-      const web3Provider = await connectWallet();
-      if (web3Provider) {
-        setProvider(web3Provider);
-        const accounts = await web3Provider.listAccounts();
-        setAccount(accounts[0]);
-        await initializeContract(accounts[0], web3Provider);
-      }
+      setError('');
+      await onConnect();
     } catch (err) {
       console.error('Connection failed:', err);
       setError('Failed to connect wallet');

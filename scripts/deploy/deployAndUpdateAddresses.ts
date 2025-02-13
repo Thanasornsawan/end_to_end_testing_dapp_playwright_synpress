@@ -67,6 +67,15 @@ async function main() {
   // Add delay to ensure contract is ready
   await new Promise(resolve => setTimeout(resolve, 1000));
 
+  const APIIntegrationManager = await ethers.getContractFactory("APIIntegrationManager");
+  const apiManager = await (await APIIntegrationManager.deploy(
+    enhancedLendingProtocol.address,
+  )).deployed();
+  console.log("APIIntegrationManager deployed to:", apiManager.address);
+
+  // Add delay to ensure contract is ready
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
   // Set initial price in oracle
   await mockPriceOracle.updatePrice(
     mockWETH.address,
@@ -181,6 +190,7 @@ async function main() {
     usdc: mockUSDC.address,
     lendingProtocol: testLendingProtocol.address,
     enhancedLendingProtocol: enhancedLendingProtocol.address,
+    apiManager: apiManager.address,
     priceOracle: mockPriceOracle.address
   };
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "../core/EnhancedLendingProtocol.sol";
 
 /**
  * @title APIIntegrationManager
@@ -11,6 +12,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 contract APIIntegrationManager is AccessControl, Pausable {
     bytes32 public constant API_UPDATER_ROLE = keccak256("API_UPDATER_ROLE");
     bytes32 public constant DATA_VALIDATOR_ROLE = keccak256("DATA_VALIDATOR_ROLE");
+    EnhancedLendingProtocol private immutable lendingProtocol;
 
     // Structures for API data
     struct MarketData {
@@ -72,10 +74,39 @@ contract APIIntegrationManager is AccessControl, Pausable {
         bytes data
     );
 
-    constructor() {
+    constructor(address _lendingProtocol) {
+        require(_lendingProtocol != address(0), "Invalid lending protocol address");
+        // Fix the casting
+        lendingProtocol = EnhancedLendingProtocol(payable(_lendingProtocol));
+        
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(API_UPDATER_ROLE, msg.sender);
         _setupRole(DATA_VALIDATOR_ROLE, msg.sender);
+    }
+
+    function weth() external view returns (address) {
+        return address(lendingProtocol.weth());
+    }
+
+    function totalDeposits(address token) external view returns (uint256) {
+        return lendingProtocol.totalDeposits(token);
+    }
+
+    function totalBorrows(address token) external view returns (uint256) {
+        return lendingProtocol.totalBorrows(token);
+    }
+
+    function getHealthFactor(address user) external view returns (uint256) {
+        return lendingProtocol.getHealthFactor(user);
+    }
+
+    function userPositions(address token, address user) external view returns (
+        uint256 depositAmount,
+        uint256 borrowAmount,
+        uint256 lastUpdateTime,
+        uint256 interestIndex
+    ) {
+        return lendingProtocol.userPositions(token, user);
     }
 
     /**

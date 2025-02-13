@@ -33,26 +33,32 @@ const RiskMonitor = ({
 
   const loadRiskMetrics = async () => {
     if (!apiManager || !userAddress) return;
-    
+  
     setLoading(true);
     try {
-      const metrics = await apiManager.getUserRiskMetrics(userAddress);
-      
-      const healthFactor = parseFloat(ethers.utils.formatUnits(metrics.healthFactor, 4));
-      const liquidationRisk = parseFloat(ethers.utils.formatUnits(metrics.liquidationRisk, 4));
-      
+      const healthFactor = await apiManager.getHealthFactor(userAddress);
+      const wethAddress = await apiManager.weth();
+      const position = await apiManager.userPositions(wethAddress, userAddress);
+  
+      // Calculate liquidation risk (inverse of health factor)
+      const liquidationRisk = healthFactor.isZero() ?
+        ethers.BigNumber.from(0) :
+        ethers.BigNumber.from(10000).div(healthFactor);
+  
       let safetyRating: 'High' | 'Medium' | 'Low';
-      if (healthFactor >= 2) {
+      const healthFactorNumber = parseFloat(ethers.utils.formatUnits(healthFactor, 4));
+  
+      if (healthFactorNumber >= 2) {
         safetyRating = 'High';
-      } else if (healthFactor >= 1.5) {
+      } else if (healthFactorNumber >= 1.5) {
         safetyRating = 'Medium';
       } else {
         safetyRating = 'Low';
       }
   
       setRiskMetrics({
-        healthFactor: healthFactor.toFixed(2),
-        liquidationRisk: liquidationRisk.toFixed(2),
+        healthFactor: healthFactorNumber.toFixed(2),
+        liquidationRisk: ethers.utils.formatUnits(liquidationRisk, 2),
         safetyRating
       });
     } catch (err) {
@@ -61,7 +67,7 @@ const RiskMonitor = ({
     } finally {
       setLoading(false);
     }
-  };
+  };  
 
   const getSafetyColor = (rating: 'High' | 'Medium' | 'Low') => {
     switch (rating) {

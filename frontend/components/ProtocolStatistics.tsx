@@ -51,14 +51,23 @@ const ProtocolStatistics = ({
 
   const loadProtocolStats = async () => {
     try {
-      const marketData = await apiManager?.getMarketData('default');
-      if (marketData) {
-        setStats({
-          totalLiquidity: ethers.utils.formatEther(marketData.totalLiquidity),
-          totalBorrowed: ethers.utils.formatEther(marketData.totalBorrowed),
-          utilizationRate: marketData.utilizationRate.toString(),
-        });
-      }
+      if (!apiManager) return;
+      
+      // Get total deposits and borrows for WETH
+      const wethAddress = await apiManager.weth();
+      const totalDeposits = await apiManager.totalDeposits(wethAddress);
+      const totalBorrows = await apiManager.totalBorrows(wethAddress);
+      
+      // Calculate utilization rate
+      const utilizationRate = totalDeposits.isZero() ? 
+        '0' : 
+        totalBorrows.mul(10000).div(totalDeposits).toString();
+  
+      setStats({
+        totalLiquidity: ethers.utils.formatEther(totalDeposits),
+        totalBorrowed: ethers.utils.formatEther(totalBorrows),
+        utilizationRate
+      });
     } catch (err) {
       console.error('Error loading stats:', err);
       setError('Failed to load protocol statistics');
