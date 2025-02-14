@@ -4,6 +4,14 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: '/api/:path*',
+      },
+    ];
+  },
   webpack: (config) => {
     // Modify existing TypeScript rule or add a new one
     config.module.rules.push({
