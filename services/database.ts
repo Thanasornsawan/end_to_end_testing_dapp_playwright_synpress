@@ -32,13 +32,14 @@ export const updateMarketData = async (
     }
   };
   
-  export const logUserActivity = async (
+export const logUserActivity = async (
     userId: string,
     activityType: string,
     amount: string,
     timestamp: Date,
     txHash: string,
-    blockNumber: number
+    blockNumber: number,
+    token: string
   ): Promise<void> => {
     try {
       const response = await fetch('/api/activity', {
@@ -54,16 +55,17 @@ export const updateMarketData = async (
             amount,
             timestamp: timestamp.toISOString(),
             txHash,
-            blockNumber
+            blockNumber,
+            token
           }
         })
       });
   
       if (!response.ok) {
-        throw new Error('Failed to log user activity');
+        throw new Error('Failed to log activity');
       }
     } catch (error) {
-      console.error('Error logging user activity:', error);
+      console.error('Error logging activity:', error);
       throw error;
     }
   };

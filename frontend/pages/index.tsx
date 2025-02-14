@@ -37,21 +37,38 @@ export default function Home() {
   useEffect(() => {
     if (apiManager && provider) {
       console.log('Setting up event listeners');
+      
+      // Keep track of processed transactions
+      const processedTxs = new Set();
 
       const setupContractListeners = async () => {
         try {
-          // Get both contracts
           const { lendingProtocol } = await getContracts(provider);
-          console.log('Contracts ready:', {
+          console.log('Setting up listeners for contracts:', {
             apiManager: apiManager.address,
             lendingProtocol: lendingProtocol.address
           });
 
-          // Listen for LendingProtocol events
+          // Remove any existing listeners
+          lendingProtocol.removeAllListeners();
+
+          // Deposit event
           lendingProtocol.on('Deposit', 
             async (token, user, amount, event) => {
-              console.log('Deposit event:', { token, user, amount: amount.toString() });
-              
+              // Check if we've already processed this transaction
+              if (processedTxs.has(event.transactionHash)) {
+                console.log('Skipping duplicate Deposit transaction:', event.transactionHash);
+                return;
+              }
+              processedTxs.add(event.transactionHash);
+
+              console.log('Processing Deposit event:', {
+                token,
+                user,
+                amount: amount.toString(),
+                txHash: event.transactionHash
+              });
+
               try {
                 await logUserActivity(
                   user,
@@ -59,17 +76,30 @@ export default function Home() {
                   ethers.utils.formatEther(amount),
                   new Date(),
                   event.transactionHash,
-                  event.blockNumber
+                  event.blockNumber,
+                  token
                 );
               } catch (error) {
                 console.error('Failed to log deposit:', error);
               }
           });
 
+          // Borrow event
           lendingProtocol.on('Borrow', 
             async (token, user, amount, event) => {
-              console.log('Borrow event:', { token, user, amount: amount.toString() });
-              
+              if (processedTxs.has(event.transactionHash)) {
+                console.log('Skipping duplicate Borrow transaction:', event.transactionHash);
+                return;
+              }
+              processedTxs.add(event.transactionHash);
+
+              console.log('Processing Borrow event:', {
+                token,
+                user,
+                amount: amount.toString(),
+                txHash: event.transactionHash
+              });
+
               try {
                 await logUserActivity(
                   user,
@@ -77,17 +107,30 @@ export default function Home() {
                   ethers.utils.formatEther(amount),
                   new Date(),
                   event.transactionHash,
-                  event.blockNumber
+                  event.blockNumber,
+                  token
                 );
               } catch (error) {
                 console.error('Failed to log borrow:', error);
               }
           });
 
+          // Withdraw event
           lendingProtocol.on('Withdraw', 
             async (token, user, amount, event) => {
-              console.log('Withdraw event:', { token, user, amount: amount.toString() });
-              
+              if (processedTxs.has(event.transactionHash)) {
+                console.log('Skipping duplicate Withdraw transaction:', event.transactionHash);
+                return;
+              }
+              processedTxs.add(event.transactionHash);
+
+              console.log('Processing Withdraw event:', {
+                token,
+                user,
+                amount: amount.toString(),
+                txHash: event.transactionHash
+              });
+
               try {
                 await logUserActivity(
                   user,
@@ -95,17 +138,30 @@ export default function Home() {
                   ethers.utils.formatEther(amount),
                   new Date(),
                   event.transactionHash,
-                  event.blockNumber
+                  event.blockNumber,
+                  token
                 );
               } catch (error) {
                 console.error('Failed to log withdraw:', error);
               }
           });
 
+          // Repay event
           lendingProtocol.on('Repay', 
             async (token, user, amount, event) => {
-              console.log('Repay event:', { token, user, amount: amount.toString() });
-              
+              if (processedTxs.has(event.transactionHash)) {
+                console.log('Skipping duplicate Repay transaction:', event.transactionHash);
+                return;
+              }
+              processedTxs.add(event.transactionHash);
+
+              console.log('Processing Repay event:', {
+                token,
+                user,
+                amount: amount.toString(),
+                txHash: event.transactionHash
+              });
+
               try {
                 await logUserActivity(
                   user,
@@ -113,21 +169,44 @@ export default function Home() {
                   ethers.utils.formatEther(amount),
                   new Date(),
                   event.transactionHash,
-                  event.blockNumber
+                  event.blockNumber,
+                  token
                 );
               } catch (error) {
                 console.error('Failed to log repay:', error);
               }
           });
 
-          // Debug listener for all events
+          // Market data event
+          apiManager.on('MarketDataUpdated', 
+            async (poolId, timestamp, totalLiquidity, utilizationRate, ipfsHash) => {
+              console.log('MarketDataUpdated:', {
+                poolId,
+                totalLiquidity: totalLiquidity.toString(),
+                utilizationRate: utilizationRate.toString()
+              });
+              try {
+                await updateMarketData(
+                  poolId,
+                  ethers.utils.formatEther(totalLiquidity),
+                  utilizationRate.toString(),
+                  new Date(timestamp.toNumber() * 1000)
+                );
+              } catch (error) {
+                console.error('Failed to update market data:', error);
+              }
+          });
+
+          // Debug listener
           lendingProtocol.on('*', (event) => {
-            console.log('Contract event received:', {
+            console.log('Raw contract event:', {
               name: event.event,
               args: event.args,
-              txHash: event.transactionHash
+              txHash: event.transactionHash,
+              timestamp: new Date().toISOString()
             });
           });
+
         } catch (error) {
           console.error('Error setting up contract listeners:', error);
         }
@@ -135,30 +214,13 @@ export default function Home() {
 
       setupContractListeners();
 
-      // APIManager events (if needed)
-      apiManager.on('MarketDataUpdated', 
-        async (poolId, timestamp, totalLiquidity, utilizationRate, ipfsHash) => {
-          console.log('MarketDataUpdated:', {
-            poolId,
-            totalLiquidity: totalLiquidity.toString(),
-            utilizationRate: utilizationRate.toString()
-          });
-          
-          try {
-            await updateMarketData(
-              poolId,
-              ethers.utils.formatEther(totalLiquidity),
-              utilizationRate.toString(),
-              new Date(timestamp.toNumber() * 1000)
-            );
-          } catch (error) {
-            console.error('Failed to update market data:', error);
-          }
-      });
-
+      // Cleanup
       return () => {
         console.log('Cleaning up event listeners');
-        apiManager.removeAllListeners();
+        processedTxs.clear();
+        if (apiManager) {
+          apiManager.removeAllListeners();
+        }
       };
     }
   }, [apiManager, provider]);
