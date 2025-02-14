@@ -121,6 +121,32 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
     return new ethers.Contract(address, wethInterface, provider);
   };
 
+  const getSimplifiedErrorMessage = (error: any): string => {
+    if (typeof error === 'string') return error;
+    
+    // Check for common error messages
+    const errorString = error?.message || error?.reason || JSON.stringify(error);
+    
+    if (errorString.includes('Insufficient WETH balance')) {
+      return "Cannot borrow more than deposit amount";
+    }
+    if (errorString.includes('Cannot withdraw more than')) {
+      return "Cannot withdraw more than deposited amount";
+    }
+    if (errorString.includes('Cannot repay more than')) {
+      return "Cannot repay more than borrowed amount";
+    }
+    if (errorString.includes('Insufficient collateral')) {
+      return "Insufficient collateral for this action";
+    }
+    if (errorString.includes('Unhealthy position')) {
+      return "Position would become unhealthy after this action";
+    }
+    
+    // Default error message
+    return "Transaction failed. Please try again.";
+  };
+
   const handleDeposit = async () => {
     if (!provider || !depositAmount || !wethAddress) return;
     setLoading(true);
@@ -197,6 +223,13 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
     setError('');
     try {
       const { lendingProtocol } = await getContracts(provider);
+      
+      // Check current deposit
+      const position = await lendingProtocol.userPositions(wethAddress, account);
+      if (parseFloat(withdrawAmount) > parseFloat(ethers.utils.formatEther(position.depositAmount))) {
+        throw new Error("Cannot withdraw more than deposited amount");
+      }
+  
       const tx = await lendingProtocol.withdraw(
         wethAddress,
         parseEther(withdrawAmount)
@@ -206,7 +239,7 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
       setWithdrawAmount('');
     } catch (err) {
       console.error('Withdrawal failed:', err);
-      setError('Withdrawal failed: ' + getErrorMessage(err));
+      setError(getSimplifiedErrorMessage(err));
     }
     setLoading(false);
   };
@@ -217,6 +250,13 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
     setError('');
     try {
       const { lendingProtocol } = await getContracts(provider);
+      
+      // Validate borrow amount against deposit
+      const position = await lendingProtocol.userPositions(wethAddress, account);
+      if (parseFloat(borrowAmount) > parseFloat(ethers.utils.formatEther(position.depositAmount))) {
+        throw new Error("Cannot borrow more than deposit amount");
+      }
+  
       const tx = await lendingProtocol.borrow(
         wethAddress,
         parseEther(borrowAmount)
@@ -226,7 +266,7 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
       setBorrowAmount('');
     } catch (err) {
       console.error('Borrow failed:', err);
-      setError('Borrow failed: ' + getErrorMessage(err));
+      setError(getSimplifiedErrorMessage(err));
     }
     setLoading(false);
   };
@@ -237,6 +277,13 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
     setError('');
     try {
       const { lendingProtocol } = await getContracts(provider);
+      
+      // Check borrow amount first
+      const position = await lendingProtocol.userPositions(wethAddress, account);
+      if (parseFloat(repayAmount) > parseFloat(ethers.utils.formatEther(position.borrowAmount))) {
+        throw new Error("Cannot repay more than borrowed amount");
+      }
+  
       const tx = await lendingProtocol.repay(
         wethAddress,
         parseEther(repayAmount),
@@ -247,7 +294,7 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
       setRepayAmount('');
     } catch (err) {
       console.error('Repay failed:', err);
-      setError('Repay failed: ' + getErrorMessage(err));
+      setError(getSimplifiedErrorMessage(err));
     }
     setLoading(false);
   };

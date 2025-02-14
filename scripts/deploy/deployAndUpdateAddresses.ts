@@ -2,6 +2,10 @@ import { ethers, network } from "hardhat";
 import { Contract, PayableOverrides, BigNumberish, BigNumber, ContractTransaction, Overrides } from "ethers";
 import fs from "fs";
 import path from "path";
+import { PrismaClient } from '@prisma/client';
+import { IntegrationService } from '../../services/IntegrationService';
+
+const prisma = new PrismaClient()
 
 interface IWETH extends Contract {
   deposit(overrides?: PayableOverrides): Promise<ContractTransaction>;
@@ -95,6 +99,15 @@ async function main() {
     500   // 5% interest rate
   );
   await tokenConfigTx.wait();
+
+  const integrationService = new IntegrationService(
+    process.env.RPC_URL!,
+    apiManager.address,
+    enhancedLendingProtocol.address
+  );
+  
+  await integrationService.initialize();
+  await integrationService.syncDatabase();
 
   /* ----- debug contract start ------
   // Add to deployAndUpdateAddresses.ts after WETH deployment

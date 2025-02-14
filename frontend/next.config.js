@@ -5,20 +5,19 @@ const path = require('path');
 const nextConfig = {
   reactStrictMode: true,
   webpack: (config) => {
-    // Add TypeScript loader for TypeChain files
+    // Modify existing TypeScript rule or add a new one
     config.module.rules.push({
       test: /\.ts$/,
-      include: [
-        path.resolve(__dirname, '../typechain')
-      ],
       use: [
         {
           loader: 'ts-loader',
           options: {
             transpileOnly: true,
+            configFile: path.resolve(__dirname, './tsconfig.json'),
           },
         },
       ],
+      exclude: /node_modules/,
     });
 
     // Add resolver for TypeChain imports
@@ -26,6 +25,9 @@ const nextConfig = {
       ...config.resolve.alias,
       '@typechain': path.resolve(__dirname, '../typechain'),
     };
+
+    // Ensure proper resolution of TypeScript files
+    config.resolve.extensions = [...config.resolve.extensions, '.ts', '.tsx'];
 
     return config;
   },

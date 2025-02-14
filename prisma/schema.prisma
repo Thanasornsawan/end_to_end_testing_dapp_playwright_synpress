@@ -54,13 +54,12 @@ model UserActivity {
   userId       String
   timestamp    DateTime
   activityType String
-  amount       Decimal
+  amount       String
   txHash       String
   blockNumber  Int
-  metadata     Json?
   user         User     @relation(fields: [userId], references: [id])
 
-  @@index([userId, timestamp])
+  @@index([userId])
 }
 
 model Position {

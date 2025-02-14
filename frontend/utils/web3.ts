@@ -1,3 +1,4 @@
+// utils/web3.ts
 import { ethers } from 'ethers';
 import type { Ethereum } from '../../types/window';
 import { EnhancedLendingProtocol } from "@typechain/contracts/core/EnhancedLendingProtocol";
@@ -18,9 +19,9 @@ export async function connectWallet(): Promise<ethers.providers.Web3Provider | n
       console.error('Error connecting wallet:', error);
       return null;
     }
-  }
+}
   
-  export async function getContracts(provider: ethers.providers.Web3Provider) {
+export async function getContracts(provider: ethers.providers.Web3Provider) {
     const signer = provider.getSigner();
     const network = await provider.getNetwork();
     const addresses = getContractAddresses(network.chainId);
@@ -35,6 +36,11 @@ export async function connectWallet(): Promise<ethers.providers.Web3Provider | n
       addresses.enhancedLendingProtocol,
       signer
     );
+
+    const apiManager = APIIntegrationManager__factory.connect(
+      addresses.apiManager,
+      signer
+    );
   
     // Basic contract verification
     const wethAddress = await lendingProtocol.weth();
@@ -46,8 +52,8 @@ export async function connectWallet(): Promise<ethers.providers.Web3Provider | n
       collateralFactor: tokenConfig.collateralFactor.toString()
     });
   
-    return { lendingProtocol };
-  }
+    return { lendingProtocol, apiManager };
+}
 
 export function formatEther(value: ethers.BigNumber): string {
   return ethers.utils.formatEther(value);

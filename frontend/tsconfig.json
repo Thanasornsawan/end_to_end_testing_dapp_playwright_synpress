@@ -24,7 +24,8 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "../typechain/**/*.ts"
+    "../typechain/**/*.ts",
+    "services/**/*.ts"  // Explicitly include services directory
   ],
   "exclude": ["node_modules"]
 }
