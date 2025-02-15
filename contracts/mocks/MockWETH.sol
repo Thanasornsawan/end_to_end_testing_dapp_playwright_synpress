@@ -4,12 +4,12 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockWETH is ERC20 {
-    // Make deposit function public
     event Deposit(address indexed dst, uint wad);
     event Withdrawal(address indexed src, uint wad);
 
     constructor() ERC20("Wrapped Ether", "WETH") {
-        _mint(msg.sender, 1000000 * 10**18); // Mint 1M WETH
+        // No initial minting to make it realistic
+        // _mint(msg.sender, 1000000 * 10**18); // Mint 1M WETH
     }
 
     function deposit() public payable {
@@ -22,6 +22,11 @@ contract MockWETH is ERC20 {
         _burn(msg.sender, amount);
         payable(msg.sender).transfer(amount);
         emit Withdrawal(msg.sender, amount);
+    }
+
+    // For testing only - allows the protocol to mint WETH when users deposit ETH
+    function protocolMint(address to, uint256 amount) public {
+        _mint(to, amount);
     }
 
     receive() external payable {

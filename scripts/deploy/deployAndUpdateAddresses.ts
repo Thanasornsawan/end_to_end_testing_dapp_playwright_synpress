@@ -109,10 +109,14 @@ async function main() {
   
   await integrationService.initialize();
   await integrationService.syncDatabase();
-
-  // Update config
-  const networksPath = path.join(__dirname, "../../test/config/networks.json");
-  const networkConfig = JSON.parse(fs.readFileSync(networksPath, "utf-8"));
+  
+  const StakingPool = await ethers.getContractFactory("StakingPool");
+  const stakingPool = await StakingPool.deploy(
+      mockWETH.address,  // staking token
+      mockUSDC.address   // reward token
+  );
+  await stakingPool.deployed();
+  console.log("StakingPool deployed to:", stakingPool.address);
 
   const currentNetwork = network.name === 'mainnetFork' ? 'mainnet' : network.name;
   const addresses = {
@@ -121,7 +125,8 @@ async function main() {
     lendingProtocol: testLendingProtocol.address,
     enhancedLendingProtocol: enhancedLendingProtocol.address,
     apiManager: apiManager.address,
-    priceOracle: mockPriceOracle.address
+    priceOracle: mockPriceOracle.address,
+    stakingPool: stakingPool.address
 };
 
   // Update both config files

@@ -174,9 +174,8 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         totalBorrows[token] = totalBorrows[token].add(amount);
 
         if (token == address(weth)) {
-            weth.withdraw(amount);
-            (bool success, ) = msg.sender.call{value: amount}("");
-            require(success, "ETH transfer failed");
+            // Instead of withdrawing ETH, transfer WETH
+            require(weth.transfer(msg.sender, amount), "WETH transfer failed");
         } else {
             require(IERC20(token).transfer(msg.sender, amount), "Transfer failed");
         }

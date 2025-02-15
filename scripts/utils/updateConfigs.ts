@@ -11,6 +11,7 @@ export function updateContractConfigs(
         enhancedLendingProtocol: string;
         priceOracle: string;
         apiManager: string;
+        stakingPool: string;
     }
 ) {
     // Update networks.json
@@ -50,7 +51,8 @@ export function updateContractConfigs(
             lendingProtocol: addresses.lendingProtocol || '',
             enhancedLendingProtocol: addresses.enhancedLendingProtocol,
             priceOracle: addresses.priceOracle,
-            apiManager: addresses.apiManager
+            apiManager: addresses.apiManager,
+            stakingPool: addresses.stakingPool
         }
     };
 
@@ -73,6 +75,7 @@ export interface ContractAddresses {
     priceOracle: string;
     apiManager: string;
     lendingProtocol?: string;
+    stakingPool: string;
 }
 
 export function getContractAddresses(chainId: number): ContractAddresses {
