@@ -40,14 +40,19 @@ const RiskMonitor = ({
       const wethAddress = await apiManager.weth();
       const position = await apiManager.userPositions(wethAddress, userAddress);
   
-      // Calculate liquidation risk (inverse of health factor)
-      const liquidationRisk = healthFactor.isZero() ?
-        ethers.BigNumber.from(0) :
-        ethers.BigNumber.from(10000).div(healthFactor);
+      const healthFactorNumber = parseFloat(ethers.utils.formatUnits(healthFactor, 4));
+      
+      // Calculate liquidation risk using the same formula as the API
+      let liquidationRiskValue = '0';
+      if (healthFactorNumber > 1000000) {
+        liquidationRiskValue = '0';
+      } else if (healthFactorNumber < 0.01) {
+        liquidationRiskValue = '100';
+      } else {
+        liquidationRiskValue = Math.min(100, (100 / healthFactorNumber)).toFixed(2);
+      }
   
       let safetyRating: 'High' | 'Medium' | 'Low';
-      const healthFactorNumber = parseFloat(ethers.utils.formatUnits(healthFactor, 4));
-  
       if (healthFactorNumber >= 2) {
         safetyRating = 'High';
       } else if (healthFactorNumber >= 1.5) {
@@ -58,7 +63,7 @@ const RiskMonitor = ({
   
       setRiskMetrics({
         healthFactor: healthFactorNumber.toFixed(2),
-        liquidationRisk: ethers.utils.formatUnits(liquidationRisk, 2),
+        liquidationRisk: liquidationRiskValue,
         safetyRating
       });
     } catch (err) {
@@ -67,7 +72,7 @@ const RiskMonitor = ({
     } finally {
       setLoading(false);
     }
-  };  
+};  
 
   const getSafetyColor = (rating: 'High' | 'Medium' | 'Low') => {
     switch (rating) {

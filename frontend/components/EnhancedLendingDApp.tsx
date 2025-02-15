@@ -162,31 +162,14 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
         signer: await signer.getAddress()
       });
   
-      // Use the existing getWethContract function
-      const wethContract = getWethContract(wethAddress, provider);
-  
-      // Log initial balance
-      const initialBalance = await wethContract.balanceOf(await signer.getAddress());
-      console.log("WETH balance before:", formatEther(initialBalance));
-  
-      // Approve lending protocol
-      console.log("Approving lending protocol to spend WETH...");
-      const approveTx = await wethContract.connect(signer).approve(
-        lendingProtocol.address,
-        parseEther(depositAmount),
-        { gasLimit: 100000 }
-      );
-      await approveTx.wait();
-      console.log("Approval confirmed");
-  
-      // Deposit directly with ETH
+      // Direct deposit with ETH - no need for WETH approval
       console.log("Depositing into lending protocol...");
       const lendingDepositTx = await lendingProtocol.deposit(
         wethAddress,
         parseEther(depositAmount),
         { 
           gasLimit: 500000,
-          value: parseEther(depositAmount)  // Important: Send ETH with the transaction
+          value: parseEther(depositAmount)  // Send ETH with the transaction
         }
       );
       
