@@ -2,19 +2,22 @@
   "mainnet": {
     "weth": "0xC070A317F23E9A4e982e356485416251dd3Ed944",
     "usdc": "0x6D39d71fF4ab56a4873febd34e1a3BDefc01b41e",
-    "lendingProtocol": "0xe3EF345391654121f385679613Cea79A692C2Dd8"
+    "lendingProtocol": "0xe3EF345391654121f385679613Cea79A692C2Dd8",
+    "enhancedLendingProtocol": "0xe8D2A1E88c91DCd5433208d4152Cc4F399a7e91d",
+    "priceOracle": "0x5c74c94173F05dA1720953407cbb920F3DF9f887",
+    "apiManager": "0x5067457698Fd6Fa1C6964e416b3f42713513B3dD"
   },
   "polygon": {
     "weth": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
     "usdc": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
   },
   "local": {
-    "weth": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6",
-    "usdc": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
-    "lendingProtocol": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e",
-    "enhancedLendingProtocol": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0",
-    "priceOracle": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
-    "apiManager": "0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82"
+    "weth": "0x22753E4264FDDc6181dc7cce468904A80a363E44",
+    "usdc": "0xA7c59f010700930003b33aB25a7a0679C860f29c",
+    "lendingProtocol": "0x276C216D241856199A83bf27b2286659e5b877D3",
+    "enhancedLendingProtocol": "0x3347B4d90ebe72BeFb30444C9966B2B990aE9FcB",
+    "priceOracle": "0xfaAddC93baf78e89DCf37bA67943E1bE8F37Bb8c",
+    "apiManager": "0x3155755b79aA083bd953911C92705B7aA82a18F9"
   },
   "sepolia": {
     "weth": "0xf531B8F309Be94191af87605CfBf600D71C2cFe0",

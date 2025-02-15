@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { PrismaClient } from '@prisma/client';
 import { IntegrationService } from '../../services/IntegrationService';
+import { updateContractConfigs } from '../utils/updateConfigs';
 
 const prisma = new PrismaClient()
 
@@ -109,109 +110,23 @@ async function main() {
   await integrationService.initialize();
   await integrationService.syncDatabase();
 
-  /* ----- debug contract start ------
-  // Add to deployAndUpdateAddresses.ts after WETH deployment
-  console.log("Verifying WETH initialization...");
-  const wethBalance = await mockWETH.balanceOf(enhancedLendingProtocol.address);
-  console.log("Initial WETH balance:", wethBalance.toString());
-
-  // Verify configuration
-  const tokenConfig = await enhancedLendingProtocol.tokenConfigs(mockWETH.address);
-  console.log("Token config after setup:", {
-    isSupported: tokenConfig.isSupported,
-    collateralFactor: tokenConfig.collateralFactor.toString(),
-    liquidationThreshold: tokenConfig.liquidationThreshold.toString()
-  });
-
-  // Verify WETH address
-  const contractWeth = await enhancedLendingProtocol.weth();
-  console.log("Contract WETH address:", contractWeth);
-
-  console.log("Testing deposit...");
-  try {
-    const depositAmount = ethers.utils.parseEther("0.1");
-    
-    // Include balanceOf in the interface
-    const mockWETHContract = await ethers.getContractAt(
-      [
-        "function approve(address spender, uint256 amount) external returns (bool)",
-        "function balanceOf(address account) external view returns (uint256)"
-      ],
-      mockWETH.address
-    );
-
-    // Log initial state
-    console.log("Initial balances:");
-    const initialBalance = await mockWETHContract.balanceOf(deployer.address);
-    console.log("WETH balance before:", ethers.utils.formatEther(initialBalance));
-
-    // Approve lending protocol
-    console.log("Approving lending protocol to spend WETH...");
-    const approveTx = await mockWETHContract.approve(
-      enhancedLendingProtocol.address,
-      depositAmount,
-      { gasLimit: 100000 }
-    );
-    await approveTx.wait();
-    console.log("Approval confirmed");
-
-    // Deposit directly with ETH
-    console.log("Depositing into lending protocol...");
-    const lendingDepositTx = await enhancedLendingProtocol.deposit(
-      mockWETH.address,
-      depositAmount,
-      { 
-        gasLimit: 500000,
-        value: depositAmount  // Send ETH with the transaction
-      }
-    );
-    
-    const lendingDepositReceipt = await lendingDepositTx.wait();
-    console.log("Lending deposit confirmed, gas used:", lendingDepositReceipt.gasUsed.toString());
-
-    // Verify final position
-    const position = await enhancedLendingProtocol.userPositions(
-      mockWETH.address,
-      deployer.address
-    );
-    console.log("Final position:", {
-      depositAmount: ethers.utils.formatEther(position.depositAmount),
-      borrowAmount: ethers.utils.formatEther(position.borrowAmount)
-    });
-
-  } catch (err: unknown) {
-    console.error("Test deposit failed:", {
-      error: err instanceof Error ? err.message : String(err),
-      code: err instanceof Error && 'code' in err ? (err as any).code : undefined,
-      reason: err instanceof Error && 'reason' in err ? (err as any).reason : undefined
-    });
-
-    if (err instanceof Error) {
-      console.error("Error stack:", err.stack);
-    }
-  }
-  */ // debug contrac end -------
-
   // Update config
   const networksPath = path.join(__dirname, "../../test/config/networks.json");
   const networkConfig = JSON.parse(fs.readFileSync(networksPath, "utf-8"));
 
   const currentNetwork = network.name === 'mainnetFork' ? 'mainnet' : network.name;
-  networkConfig[currentNetwork] = {
-    ...networkConfig[currentNetwork],
+  const addresses = {
     weth: mockWETH.address,
     usdc: mockUSDC.address,
     lendingProtocol: testLendingProtocol.address,
     enhancedLendingProtocol: enhancedLendingProtocol.address,
     apiManager: apiManager.address,
     priceOracle: mockPriceOracle.address
-  };
+};
 
-  // Add verification logs
-  //console.log("Network config to be written:", networkConfig[currentNetwork]);
-
-  fs.writeFileSync(networksPath, JSON.stringify(networkConfig, null, 2));
-  console.log("Updated networks.json with new addresses");
+  // Update both config files
+  updateContractConfigs(currentNetwork, addresses);
+  console.log("Updated contract configurations");
 }
 
 main()
