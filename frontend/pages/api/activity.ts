@@ -9,6 +9,83 @@ import { getContractAddresses, CHAIN_IDS } from '../../config/contracts';
 
 const prisma = new PrismaClient();
 
+async function updatePriceData(
+    tx: Prisma.TransactionClient,
+    token: string, 
+    priceOracle: any,
+    provider: ethers.providers.Provider
+) {
+    try {
+        const tokenPrice = await priceOracle.getPrice(token);
+        const formattedPrice = ethers.utils.formatEther(tokenPrice);
+        
+        // Create price data entry
+        await tx.priceData.create({
+            data: {
+                token: token,
+                price: new Prisma.Decimal(formattedPrice),
+                timestamp: new Date(),
+                source: 'oracle',
+                confidence: new Prisma.Decimal('1.0'), // Assuming full confidence from oracle
+                deviation: new Prisma.Decimal('0'),
+                isOutlier: false
+            }
+        });
+
+        console.log('Price data updated:', {
+            token,
+            price: formattedPrice,
+            timestamp: new Date()
+        });
+    } catch (error) {
+        console.error('Error updating price data:', error);
+        throw error;
+    }
+}
+
+async function updateProtocolStats(
+    tx: Prisma.TransactionClient,
+    lendingProtocol: any,
+    provider: ethers.providers.Provider
+) {
+    try {
+        const wethAddress = await lendingProtocol.weth();
+        
+        // Get total deposits and borrows
+        const totalDeposits = await lendingProtocol.totalDeposits(wethAddress);
+        const totalBorrows = await lendingProtocol.totalBorrows(wethAddress);
+        
+        // Get gas price
+        const gasPrice = await provider.getGasPrice();
+        
+        // Create protocol stats entry
+        await tx.protocolStats.create({
+            data: {
+                timestamp: new Date(),
+                totalValueLocked: new Prisma.Decimal(ethers.utils.formatEther(totalDeposits)),
+                totalBorrowed: new Prisma.Decimal(ethers.utils.formatEther(totalBorrows)),
+                uniqueUsers: 0, // This should be calculated from your users table
+                dailyActiveUsers: 0, // This should be calculated from recent transactions
+                totalTransactions: 0, // This should be incremented with each transaction
+                avgGasPrice: new Prisma.Decimal(ethers.utils.formatUnits(gasPrice, 'gwei')),
+                networkStatus: 'active',
+                metadata: {
+                    lastUpdateBlock: await provider.getBlockNumber()
+                }
+            }
+        });
+
+        console.log('Protocol stats updated:', {
+            tvl: ethers.utils.formatEther(totalDeposits),
+            totalBorrowed: ethers.utils.formatEther(totalBorrows),
+            gasPrice: ethers.utils.formatUnits(gasPrice, 'gwei')
+        });
+    } catch (error) {
+        console.error('Error updating protocol stats:', error);
+        throw error;
+    }
+}
+
 async function getMarketMetrics(
     token: string,
     lendingProtocol: any
@@ -178,6 +255,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         data.token
                     );
                     console.log('Current position from contract:', currentPosition);
+
+                    const provider = new ethers.providers.JsonRpcProvider('http://127.0.0.1:8545');
+                    const addresses = getContractAddresses(CHAIN_IDS.local);
+                    const lendingProtocol = EnhancedLendingProtocol__factory.connect(
+                        addresses.enhancedLendingProtocol,
+                        provider
+                    );
+
+                    // Get oracle for price updates
+                    const priceOracleAddress = await lendingProtocol.priceOracle();
+                    const priceOracle = IPriceOracle__factory.connect(priceOracleAddress, provider);
+
+                    // Update price data
+                    await updatePriceData(tx, data.token, priceOracle, provider);
+
+                    // Update protocol stats
+                    await updateProtocolStats(tx, lendingProtocol, provider);
 
                     // 4. Create UserActivity
                     const activity = await tx.userActivity.create({
