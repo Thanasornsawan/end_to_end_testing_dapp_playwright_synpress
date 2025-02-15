@@ -3,9 +3,37 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { ethers } from 'ethers';
 import { EnhancedLendingProtocol__factory } from '../../../typechain/factories/contracts/core/EnhancedLendingProtocol__factory';
+import { IPriceOracle } from "../../../typechain/contracts/interfaces/IPriceOracle";
+import { IPriceOracle__factory } from '../../../typechain/factories/contracts/interfaces/IPriceOracle__factory';
 import { getContractAddresses, CHAIN_IDS } from '../../config/contracts';
 
 const prisma = new PrismaClient();
+
+async function getMarketMetrics(
+    token: string,
+    lendingProtocol: any
+) {
+    try {
+        // Get token config which contains interest rate
+        const tokenConfig = await lendingProtocol.tokenConfigs(token);
+        
+        // Get oracle address and create contract instance
+        const oracleAddress = await lendingProtocol.priceOracle();
+        const oracle = IPriceOracle__factory.connect(oracleAddress, lendingProtocol.provider);
+        const tokenPrice = await oracle.getPrice(token);
+
+        return {
+            interestRate: ethers.utils.formatUnits(tokenConfig.interestRate, 2), // Convert basis points to percentage
+            tokenPrice: tokenPrice
+        };
+    } catch (error) {
+        console.error('Error getting market metrics:', error);
+        return {
+            interestRate: '0',
+            tokenPrice: ethers.constants.WeiPerEther // Default to 1:1 if error
+        };
+    }
+}
 
 function normalizeHealthFactor(healthFactor: string): string {
     try {
@@ -44,12 +72,25 @@ async function getCurrentPositionFromContract(
 
         const position = await lendingProtocol.userPositions(token, userId);
         const healthFactor = await lendingProtocol.getHealthFactor(userId);
+        
+        // Get token config for interest rate
+        const tokenConfig = await lendingProtocol.tokenConfigs(token);
+        
+        // Get oracle price and calculate collateral value
+        const priceOracleAddress = await lendingProtocol.priceOracle();
+        const priceOracle = IPriceOracle__factory.connect(priceOracleAddress, provider);
+        const tokenPrice = await priceOracle.getPrice(token);
+        
+        // Calculate collateral value: depositAmount * tokenPrice / 1e18
+        const collateralValue = position.depositAmount.mul(tokenPrice).div(ethers.constants.WeiPerEther);
 
         return {
             depositAmount: ethers.utils.formatEther(position.depositAmount),
             borrowAmount: ethers.utils.formatEther(position.borrowAmount),
             healthFactor: ethers.utils.formatUnits(healthFactor, 4),
-            lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000)
+            lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000),
+            collateralValue: ethers.utils.formatEther(collateralValue),
+            interestRate: ethers.utils.formatUnits(tokenConfig.interestRate, 2) // Convert basis points to percentage
         };
     } catch (error) {
         console.error('Error getting current position:', error);
@@ -186,9 +227,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                                 await safeDecimal(calculateSafeLiquidationRisk(currentPosition.healthFactor)) : 
                                 await safeDecimal('0'),
                             collateralValue: currentPosition ? 
-                                await safeDecimal(currentPosition.depositAmount) : 
+                                await safeDecimal(currentPosition.collateralValue) : 
                                 await safeDecimal('0'),
-                            interestRate: await safeDecimal('0.02'),
+                            interestRate: currentPosition ? 
+                                await safeDecimal(currentPosition.interestRate) : 
+                                await safeDecimal('0'),
                             status: 'ACTIVE'
                         },
                         update: {
@@ -202,7 +245,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                                 await safeDecimal(calculateSafeLiquidationRisk(currentPosition.healthFactor)) : 
                                 undefined,
                             collateralValue: currentPosition ? 
-                                await safeDecimal(currentPosition.depositAmount) : 
+                                await safeDecimal(currentPosition.collateralValue) : 
+                                undefined,
+                            interestRate: currentPosition ? 
+                                await safeDecimal(currentPosition.interestRate) : 
                                 undefined
                         }
                     });
