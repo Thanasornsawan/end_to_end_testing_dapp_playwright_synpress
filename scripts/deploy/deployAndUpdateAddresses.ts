@@ -118,6 +118,12 @@ async function main() {
   await stakingPool.deployed();
   console.log("StakingPool deployed to:", stakingPool.address);
 
+  // After StakingPool deployment
+  const initialPoolBalance = ethers.utils.parseUnits("1000000", 6); // 1M USDC
+  await mockUSDC.transfer(stakingPool.address, initialPoolBalance);
+  console.log("Transferred initial USDC to StakingPool:", 
+      ethers.utils.formatUnits(initialPoolBalance, 6));
+
   const currentNetwork = network.name === 'mainnetFork' ? 'mainnet' : network.name;
   const addresses = {
     weth: mockWETH.address,

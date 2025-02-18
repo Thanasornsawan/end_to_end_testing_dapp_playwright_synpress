@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { StakingPool } from "../../typechain/contracts/core/StakingPool";
-import { MockWETH } from "../../typechain/contracts/mocks/MockWETH";
-import { MockUSDC } from "../../typechain/contracts/mocks/MockUSDC";
 
 interface StakingInfo {
     stakedAmount: string;
@@ -15,15 +13,87 @@ interface StakingInfo {
     usdcBalance: string;
 }
 
-interface StakingTabProps {
+const getSimplifiedErrorMessage = (error: any): string => {
+    if (typeof error === 'string') return error;
+    
+    const errorString = error?.message || error?.reason || JSON.stringify(error);
+    
+    if (errorString.includes('Insufficient WETH balance')) {
+        return "Cannot borrow more than deposit amount";
+    }
+    if (errorString.includes('Cannot withdraw more than')) {
+        return "Cannot withdraw more than deposited amount";
+    }
+    if (errorString.includes('Amount exceeds balance')) {
+        return "Insufficient WETH balance for staking";
+    }
+    if (errorString.includes('Insufficient stake')) {
+        return "Cannot unstake more than staked amount";
+    }
+    if (errorString.includes('transfer amount exceeds balance')) {
+        return "Amount exceeds staked balance";
+    }
+    if (errorString.includes('Cannot stake 0')) {
+        return "Stake amount must be greater than 0";
+    }
+    if (errorString.includes('Slippage too high')) {
+        return "Price impact too high, try smaller amount";
+    }
+    if (errorString.includes('Insufficient liquidity')) {
+        return "Not enough liquidity for conversion";
+    }
+    
+    return "Transaction failed. Please try again.";
+};
+
+const CountdownTimer: React.FC<{ 
+    lastUpdateTime: number;
+    onZero: () => void;
+}> = ({ lastUpdateTime, onZero }) => {
+    const [timeLeft, setTimeLeft] = useState<number>(0);
+    const hasTriggeredRef = useRef(false);
+
+    useEffect(() => {
+        hasTriggeredRef.current = false;
+        
+        const calculateTimeLeft = () => {
+            const now = Math.floor(Date.now() / 1000);
+            const nextRewardTime = lastUpdateTime + 60;
+            const remaining = nextRewardTime - now;
+            setTimeLeft(remaining > 0 ? remaining : 0);
+            
+            if (remaining <= 0 && !hasTriggeredRef.current) {
+                hasTriggeredRef.current = true;
+                onZero();
+            }
+        };
+
+        calculateTimeLeft();
+        const timer = setInterval(calculateTimeLeft, 1000);
+        return () => clearInterval(timer);
+    }, [lastUpdateTime, onZero]);
+
+    return (
+        <div className="flex flex-col items-center space-y-2">
+            <p className="text-sm font-medium">Next Reward In:</p>
+            <div className="text-lg font-bold">
+                {`${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`}
+            </div>
+            <Progress 
+                value={(60 - timeLeft) * (100/60)} 
+                className="h-1 w-full"
+            />
+        </div>
+    );
+};
+
+const StakingTab: React.FC<{
     account: string;
     provider: ethers.providers.Web3Provider | null;
-    stakingContract: StakingPool | null;
-    wethContract: MockWETH | null;
-    usdcContract: MockUSDC | null;
-}
-
-const StakingTab: React.FC<StakingTabProps> = ({
+    stakingContract: any;
+    wethContract: any;
+    usdcContract: any;
+}> = ({
     account,
     provider,
     stakingContract,
@@ -35,50 +105,113 @@ const StakingTab: React.FC<StakingTabProps> = ({
     const [stakingInfo, setStakingInfo] = useState<StakingInfo | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [lastRewardTime, setLastRewardTime] = useState(Math.floor(Date.now() / 1000));
+    const [poolInfo, setPoolInfo] = useState<{ usdcBalance: string; } | null>(null);
+    const [rewardInfo, setRewardInfo] = useState<{
+        rewardRate: string;
+        dailyReward: string;
+        stakedTime: string;
+        projectedAnnualReward: string;
+    } | null>(null);
 
-    // Log staking actions
-    const logStakingAction = (action: string, details: any) => {
-        console.log(`Staking Action - ${action}:`, {
-            timestamp: new Date().toISOString(),
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const hasActiveStakeRef = useRef<boolean>(false);
+
+    const logTransaction = (action: string, details: any) => {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ${action}:`, {
             account,
             ...details
         });
     };
 
-    useEffect(() => {
-        if (stakingContract && account && wethContract && usdcContract) {
-            loadStakingInfo();
-            const interval = setInterval(loadStakingInfo, 30000);
-            return () => clearInterval(interval);
-        }
-    }, [stakingContract, account, wethContract, usdcContract]);
-
-    const loadStakingInfo = async () => {
-        if (!stakingContract || !wethContract || !usdcContract || !account) return;
+    const loadStakingInfo = async (forceUpdate = false) => {
+        if (!stakingContract || !wethContract || !usdcContract || !account || !provider) return;
 
         try {
-            // Get staking position
-            const [stakedAmount, pendingReward] = await stakingContract.getStakeInfo(account);
+            setError('');
             
-            // Get token balances
+            const [stakedAmount, pendingReward, startTime, lastRewardTime] = 
+                await stakingContract.getStakeInfo(account);
+            
+            // Update active stake ref
+            hasActiveStakeRef.current = stakedAmount.gt(0);
+            
+            // Get balances
             const wethBalance = await wethContract.balanceOf(account);
             const usdcBalance = await usdcContract.balanceOf(account);
+            const poolBalance = await usdcContract.balanceOf(stakingContract.address);
 
+            // Update UI with current values
             setStakingInfo({
                 stakedAmount: ethers.utils.formatEther(stakedAmount),
-                pendingReward: ethers.utils.formatUnits(pendingReward, 6), // USDC has 6 decimals
+                pendingReward: ethers.utils.formatUnits(pendingReward, 6),
                 wethBalance: ethers.utils.formatEther(wethBalance),
                 usdcBalance: ethers.utils.formatUnits(usdcBalance, 6)
             });
 
-            logStakingAction('INFO_UPDATED', {
-                stakedAmount: ethers.utils.formatEther(stakedAmount),
-                pendingReward: ethers.utils.formatUnits(pendingReward, 6)
+            setPoolInfo({
+                usdcBalance: ethers.utils.formatUnits(poolBalance, 6)
             });
+
+            // Only log and update timer if there's an active stake or pending rewards
+            if (stakedAmount.gt(0) || pendingReward.gt(0)) {
+                if (stakedAmount.gt(0)) {
+                    setLastRewardTime(lastRewardTime.toNumber());
+                }
+
+                console.log('Stake Status:', {
+                    timestamp: new Date().toISOString(),
+                    hasActiveStake: stakedAmount.gt(0),
+                    stakedAmount: ethers.utils.formatEther(stakedAmount),
+                    pendingReward: ethers.utils.formatUnits(pendingReward, 6),
+                    startTime: startTime.toString(),
+                    lastRewardTime: lastRewardTime.toString(),
+                    currentBlockTime: Math.floor(Date.now() / 1000)
+                });
+
+                if (stakedAmount.gt(0)) {
+                    const [rate, daily, time, annual] = await stakingContract.getRewardInfo(account);
+                    setRewardInfo({
+                        rewardRate: (Number(rate) / 100).toFixed(2),
+                        dailyReward: ethers.utils.formatUnits(daily, 6),
+                        stakedTime: Math.floor(Number(time) / 60).toString(),
+                        projectedAnnualReward: ethers.utils.formatUnits(annual, 6)
+                    });
+                } else {
+                    setRewardInfo(null);
+                }
+            }
+
         } catch (err) {
-            console.error('Error loading staking info:', err);
+            console.error('Error loading staking info:', err instanceof Error ? err.message : 'Unknown error');
             setError('Failed to load staking information');
         }
+    };
+
+    useEffect(() => {
+        if (stakingContract && account) {
+            // Initial load
+            loadStakingInfo(true);
+
+            // Setup polling
+            pollingIntervalRef.current = setInterval(() => {
+                if (hasActiveStakeRef.current) {
+                    loadStakingInfo();
+                }
+            }, 3000);
+
+            return () => {
+                if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
+                }
+            };
+        }
+    }, [stakingContract, account]);
+
+    const handleCountdownFinish = async () => {
+        await loadStakingInfo(true);
     };
 
     const handleStake = async () => {
@@ -87,14 +220,15 @@ const StakingTab: React.FC<StakingTabProps> = ({
         setError('');
 
         try {
-            logStakingAction('STAKE_STARTED', { amount: stakeAmount });
+            const amount = ethers.utils.parseEther(stakeAmount);
+            
+            logTransaction('STAKE_STARTED', { amount: stakeAmount });
 
             // First approve WETH
-            const amount = ethers.utils.parseEther(stakeAmount);
             const approveTx = await wethContract.approve(stakingContract.address, amount);
             await approveTx.wait();
-
-            logStakingAction('WETH_APPROVED', { 
+            
+            logTransaction('WETH_APPROVED', { 
                 amount: stakeAmount,
                 txHash: approveTx.hash 
             });
@@ -103,17 +237,19 @@ const StakingTab: React.FC<StakingTabProps> = ({
             const stakeTx = await stakingContract.stake(amount);
             const receipt = await stakeTx.wait();
             
-            logStakingAction('STAKE_COMPLETED', { 
+            logTransaction('STAKE_COMPLETED', { 
                 amount: stakeAmount,
                 txHash: receipt.transactionHash 
             });
 
-            await loadStakingInfo();
+            await loadStakingInfo(true);
             setStakeAmount('');
         } catch (err) {
             console.error('Staking failed:', err);
-            setError('Staking failed: ' + (err as Error).message);
-            logStakingAction('STAKE_FAILED', { error: err });
+            setError(getSimplifiedErrorMessage(err));
+            logTransaction('STAKE_FAILED', { 
+                error: err instanceof Error ? err.message : 'Unknown error occurred'
+            });
         }
         
         setLoading(false);
@@ -125,48 +261,71 @@ const StakingTab: React.FC<StakingTabProps> = ({
         setError('');
 
         try {
-            logStakingAction('WITHDRAW_STARTED', { amount: withdrawAmount });
+            logTransaction('WITHDRAW_STARTED', { amount: withdrawAmount });
 
             const amount = ethers.utils.parseEther(withdrawAmount);
             const tx = await stakingContract.withdraw(amount);
-            const receipt = await tx.wait();
+            await tx.wait();
             
-            logStakingAction('WITHDRAW_COMPLETED', { 
-                amount: withdrawAmount,
-                txHash: receipt.transactionHash 
-            });
-
-            await loadStakingInfo();
+            // Force immediate update after withdrawal
+            await loadStakingInfo(true);
+            
+            // Clear withdrawal amount
             setWithdrawAmount('');
+            
+            logTransaction('WITHDRAW_COMPLETED', { 
+                amount: withdrawAmount,
+                txHash: tx.hash
+            });
         } catch (err) {
             console.error('Withdrawal failed:', err);
-            setError('Withdrawal failed: ' + (err as Error).message);
-            logStakingAction('WITHDRAW_FAILED', { error: err });
+            setError(getSimplifiedErrorMessage(err));
+            logTransaction('WITHDRAW_FAILED', { 
+                error: err instanceof Error ? err.message : 'Unknown error occurred'
+            });
         }
         
         setLoading(false);
     };
 
     const handleClaimRewards = async () => {
-        if (!stakingContract) return;
+        if (!stakingContract || !usdcContract || !stakingInfo) return;
+        if (parseFloat(stakingInfo.pendingReward) <= 0) {
+            setError('No rewards to claim');
+            return;
+        }
+        
         setLoading(true);
         setError('');
-
+        
         try {
-            logStakingAction('CLAIM_STARTED', {});
+            const initialUsdcBalance = await usdcContract.balanceOf(account);
+            
+            logTransaction('CLAIM_STARTED', {
+                pendingReward: stakingInfo.pendingReward
+            });
 
             const tx = await stakingContract.claimReward();
             const receipt = await tx.wait();
             
-            logStakingAction('CLAIM_COMPLETED', { 
-                txHash: receipt.transactionHash 
+            const finalUsdcBalance = await usdcContract.balanceOf(account);
+            const claimedAmount = ethers.utils.formatUnits(
+                finalUsdcBalance.sub(initialUsdcBalance),
+                6
+            );
+            
+            logTransaction('CLAIM_COMPLETED', {
+                txHash: receipt.transactionHash,
+                claimedAmount
             });
-
-            await loadStakingInfo();
+            
+            await loadStakingInfo(true);
         } catch (err) {
             console.error('Reward claim failed:', err);
-            setError('Reward claim failed: ' + (err as Error).message);
-            logStakingAction('CLAIM_FAILED', { error: err });
+            setError(getSimplifiedErrorMessage(err));
+            logTransaction('CLAIM_FAILED', { 
+                error: err instanceof Error ? err.message : 'Unknown error occurred'
+            });
         }
         
         setLoading(false);
@@ -181,13 +340,38 @@ const StakingTab: React.FC<StakingTabProps> = ({
             )}
 
             {stakingInfo && (
-                <Card className="p-4">
-                    <div className="space-y-2">
-                        <p>WETH Balance: {stakingInfo.wethBalance} WETH</p>
-                        <p>Staked WETH: {stakingInfo.stakedAmount} WETH</p>
-                        <p>USDC Balance: {stakingInfo.usdcBalance} USDC</p>
-                        <p>Pending USDC Rewards: {stakingInfo.pendingReward} USDC</p>
+                <Card className="p-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <p className="text-sm mb-1">WETH Balance: {stakingInfo.wethBalance} WETH</p>
+                            <p className="text-sm mb-1">Staked WETH: {stakingInfo.stakedAmount} WETH</p>
+                            <p className="text-sm">USDC Balance: {stakingInfo.usdcBalance} USDC</p>
+                        </div>
+                        <div>
+                            <p className="text-sm mb-1">Pending USDC Rewards: {stakingInfo.pendingReward} USDC</p>
+                            {parseFloat(stakingInfo.stakedAmount) > 0 && (
+                                <CountdownTimer 
+                                    lastUpdateTime={lastRewardTime} 
+                                    onZero={handleCountdownFinish}
+                                />
+                            )}
+                        </div>
                     </div>
+
+                    {poolInfo && (
+                        <div className="mt-2 p-2 bg-gray-100 rounded">
+                            <p className="text-sm font-medium">Pool USDC Balance: {poolInfo.usdcBalance} USDC</p>
+                        </div>
+                    )}
+
+                    {rewardInfo && parseFloat(stakingInfo.stakedAmount) > 0 && (
+                        <div className="mt-2 p-2 bg-gray-100 rounded">
+                            <p className="text-sm">Reward Rate: {rewardInfo.rewardRate}% per minute</p>
+                            <p className="text-sm">Daily Reward: {rewardInfo.dailyReward} USDC</p>
+                            <p className="text-sm">Time Staked: {rewardInfo.stakedTime} minutes</p>
+                            <p className="text-sm">Projected Annual: {rewardInfo.projectedAnnualReward} USDC</p>
+                        </div>
+                    )}
                 </Card>
             )}
 
@@ -218,10 +402,10 @@ const StakingTab: React.FC<StakingTabProps> = ({
                 />
                 <Button 
                     onClick={handleWithdraw} 
-                    disabled={loading}
+                    disabled={loading || !stakingInfo || parseFloat(withdrawAmount) > parseFloat(stakingInfo.stakedAmount)}
                     className="w-full"
                 >
-                    Withdraw WETH
+                    Unstake WETH
                 </Button>
             </div>
 
