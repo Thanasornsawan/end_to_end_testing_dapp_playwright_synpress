@@ -235,11 +235,12 @@ const StakingTab: React.FC<{
     };
 
     // Load staking info from contract
-    const loadStakingInfo = async (resetTimer = false) => {
+    const loadStakingInfo = async (updateTimer = true) => {
         if (!stakingContract || !wethContract || !usdcContract || !account || !provider) return;
-
+    
         try {
             setError('');
+            console.log("Loading staking info, updateTimer:", updateTimer);
             
             const [stakedAmount, pendingReward, startTime, contractLastRewardTime] = 
                 await stakingContract.getStakeInfo(account);
@@ -248,35 +249,26 @@ const StakingTab: React.FC<{
             const wethBalance = await wethContract.balanceOf(account);
             const usdcBalance = await usdcContract.balanceOf(account);
             const poolBalance = await usdcContract.balanceOf(stakingContract.address);
-
-            // Store values for reward calculation
-            if (stakedAmount.gt(0)) {
-                // Update refs for calculation
-                stakeAmountRef.current = ethers.utils.formatEther(stakedAmount);
-                initialStakeTimeRef.current = startTime.toNumber();
-                baseRewardRef.current = ethers.utils.formatUnits(pendingReward, 6);
+    
+            // Update refs for calculation
+            stakeAmountRef.current = ethers.utils.formatEther(stakedAmount);
+            initialStakeTimeRef.current = startTime.toNumber();
+            baseRewardRef.current = ethers.utils.formatUnits(pendingReward, 6);
+            
+            // Only update timer state if explicitly told to
+            if (updateTimer && stakedAmount.gt(0)) {
+                const now = Math.floor(Date.now() / 1000);
+                const contractTime = contractLastRewardTime.toNumber();
+                const elapsed = now - contractTime;
                 
-                // Update timer state if needed
-                if (resetTimer) {
-                    // Force timer to restart
-                    setTimerStopped(false);
-                    setLastRewardTime(Math.floor(Date.now() / 1000));
+                if (elapsed >= 60) {
+                    setTimerStopped(true);
                 } else {
-                    // Check if timer should be running or stopped
-                    const now = Math.floor(Date.now() / 1000);
-                    const contractTime = contractLastRewardTime.toNumber();
-                    const elapsed = now - contractTime;
-                    
-                    if (elapsed >= 60) {
-                        setTimerStopped(true);
-                    } else if (timerStopped) {
-                        // Only update if currently stopped
-                        setTimerStopped(false);
-                        setLastRewardTime(contractTime);
-                    }
+                    setTimerStopped(false);
+                    setLastRewardTime(contractTime);
                 }
             }
-
+    
             // Update UI state
             setStakingInfo({
                 stakedAmount: ethers.utils.formatEther(stakedAmount),
@@ -284,11 +276,11 @@ const StakingTab: React.FC<{
                 wethBalance: ethers.utils.formatEther(wethBalance),
                 usdcBalance: ethers.utils.formatUnits(usdcBalance, 6)
             });
-
+    
             setPoolInfo({
                 usdcBalance: ethers.utils.formatUnits(poolBalance, 6)
             });
-
+    
             if (stakedAmount.gt(0)) {
                 const [rate, daily, time, annual] = await stakingContract.getRewardInfo(account);
                 rewardRateRef.current = Number(rate) / 100;
@@ -302,7 +294,7 @@ const StakingTab: React.FC<{
             } else {
                 setRewardInfo(null);
             }
-
+    
         } catch (err) {
             console.error('Error loading staking info:', err instanceof Error ? err.message : 'Unknown error');
             setError('Failed to load staking information');
@@ -560,31 +552,18 @@ const StakingTab: React.FC<{
             // Reset base reward since we've claimed everything
             baseRewardRef.current = '0';
             
-            // Get the latest staking info from the contract to check timer state
-            const [stakedAmount, _, __, lastRewardTimeContract] = 
+            // Get the latest staking info from contract
+            const [stakedAmount, pendingReward, startTime, lastRewardTimeContract] = 
                 await stakingContract.getStakeInfo(account);
-                
-            // Only if user still has stake after claiming
+             
+            // CRITICAL FIX: Force timer to stopped state after claiming
+            // This ensures "Continue Staking" button appears instead of timer
             if (stakedAmount.gt(0)) {
-                const now = Math.floor(Date.now() / 1000);
-                const contractTime = lastRewardTimeContract.toNumber();
-                const elapsed = now - contractTime;
-                
-                // Check if timer should be running or stopped
-                if (elapsed >= 60) {
-                    console.log("Timer should be stopped after claim");
-                    setTimerStopped(true);
-                } else {
-                    console.log("Timer should be running after claim");
-                    setTimerStopped(false);
-                    setLastRewardTime(contractTime);
-                }
-            } else {
-                // If no stake after claiming, don't show timer
-                console.log("No stake after claiming, timer not needed");
+                console.log("Forcing timer to stopped state after claim");
+                setTimerStopped(true);
             }
             
-            // Load updated info
+            // Load updated info - pass false to prevent it from changing timer state
             await loadStakingInfo(false);
         } catch (err) {
             console.error('Reward claim failed:', err);
