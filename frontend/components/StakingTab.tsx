@@ -234,7 +234,6 @@ const StakingTab: React.FC<{
         });
     };
 
-    // Modify loadStakingInfo to preserve estimated rewards during periodic refresh
     const loadStakingInfo = async (updateTimer = true) => {
         if (!stakingContract || !wethContract || !usdcContract || !account || !provider) return;
 
@@ -325,7 +324,6 @@ const StakingTab: React.FC<{
         }
     };
 
-    // Modify the periodic refresh interval to be safer
     useEffect(() => {
         if (stakingContract && account) {
             // Initial load
@@ -442,7 +440,6 @@ const StakingTab: React.FC<{
         return isStaked && shouldShow;
     };
 
-    // Simplify the Continue Staking function
     const handleContinueStaking = async () => {
         if (!stakingContract || !account) return;
         
@@ -463,7 +460,7 @@ const StakingTab: React.FC<{
             // 3. Update base reward reference
             baseRewardRef.current = rewardAmount;
             
-            // 4. Crucial fix - create a new timestamp
+            // 4. create a new timestamp
             const newTimestamp = Math.floor(Date.now() / 1000);
             console.log("Setting new timer timestamp:", newTimestamp);
             
@@ -495,7 +492,7 @@ const StakingTab: React.FC<{
         }
     };
 
-    // Add this to track when rewards useEffect triggers
+    // track rewards useEffect triggers
     useEffect(() => {
         // Track reward update effect
         console.log(`Reward effect triggered: timerStopped=${timerStopped}, staked=${stakingInfo?.stakedAmount || 0}`);
@@ -592,8 +589,6 @@ const StakingTab: React.FC<{
         return parseFloat(displayedReward) > 0;
     };
 
-    // Updated handleClaimRewards to ensure timer state is correct
-    // Complete fix for handleClaimRewards
     const handleClaimRewards = async () => {
         if (!stakingContract || !usdcContract || !stakingInfo) return;
         

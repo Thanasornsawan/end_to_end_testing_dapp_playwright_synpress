@@ -74,10 +74,8 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
         </div>
     );
     
-    // Add this to your component state
     const [balances, setBalances] = useState<Balances>({ weth: '0' });
     
-    // Add this function to load balances
     const loadBalances = async () => {
         if (!wethContract || !account) return;
         try {
