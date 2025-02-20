@@ -49,40 +49,116 @@ const getSimplifiedErrorMessage = (error: any): string => {
 const CountdownTimer: React.FC<{ 
     lastUpdateTime: number;
     onZero: () => void;
-}> = ({ lastUpdateTime, onZero }) => {
-    const [timeLeft, setTimeLeft] = useState<number>(0);
-    const hasTriggeredRef = useRef(false);
+    onContinue: () => void;
+    timerStopped: boolean;
+}> = ({ lastUpdateTime, onZero, onContinue, timerStopped }) => {
+    const [timeLeft, setTimeLeft] = useState<number>(59);
+    const hasZeroTriggered = useRef(false);
+    const timerIdRef = useRef<NodeJS.Timeout | null>(null);
+    const lastTimestampRef = useRef(lastUpdateTime);
+
+    // Log timer state changes for debugging
+    useEffect(() => {
+        console.log(`Timer state changed: stopped=${timerStopped}, timestamp=${lastUpdateTime}`);
+        console.log(`Previous timestamp: ${lastTimestampRef.current}`);
+        
+        // Check if timestamp actually changed
+        if (lastUpdateTime !== lastTimestampRef.current) {
+            console.log("Timestamp changed, resetting timer");
+            lastTimestampRef.current = lastUpdateTime;
+        }
+    }, [timerStopped, lastUpdateTime]);
 
     useEffect(() => {
-        hasTriggeredRef.current = false;
+        // Always clear existing timer when props change
+        if (timerIdRef.current) {
+            console.log("Clearing existing timer");
+            clearInterval(timerIdRef.current);
+            timerIdRef.current = null;
+        }
         
-        const calculateTimeLeft = () => {
-            const now = Math.floor(Date.now() / 1000);
-            const nextRewardTime = lastUpdateTime + 60;
-            const remaining = nextRewardTime - now;
-            setTimeLeft(remaining > 0 ? remaining : 0);
+        // Reset flag when timer is restarted
+        if (!timerStopped) {
+            hasZeroTriggered.current = false;
+        }
+        
+        const updateTimer = () => {
+            if (timerStopped) {
+                setTimeLeft(0);
+                return;
+            }
             
-            if (remaining <= 0 && !hasTriggeredRef.current) {
-                hasTriggeredRef.current = true;
-                onZero();
+            const now = Math.floor(Date.now() / 1000);
+            const end = lastUpdateTime + 60;
+            const remaining = end - now;
+            
+            if (remaining <= 0) {
+                setTimeLeft(0);
+                if (!hasZeroTriggered.current) {
+                    hasZeroTriggered.current = true;
+                    console.log("Timer reached zero, triggering onZero callback");
+                    onZero();
+                }
+                // Stop the timer
+                if (timerIdRef.current) {
+                    console.log("Timer stopped automatically");
+                    clearInterval(timerIdRef.current);
+                    timerIdRef.current = null;
+                }
+            } else {
+                // Ensure we never show more than 59 seconds
+                setTimeLeft(Math.min(59, remaining));
             }
         };
+        
+        // Initial update
+        updateTimer();
+        
+        // Only set interval if timer is running
+        if (!timerStopped) {
+            console.log(`Starting new timer with interval for timestamp ${lastUpdateTime}`);
+            timerIdRef.current = setInterval(updateTimer, 1000);
+        }
+        
+        // Cleanup
+        return () => {
+            if (timerIdRef.current) {
+                console.log("Cleanup: clearing timer interval");
+                clearInterval(timerIdRef.current);
+                timerIdRef.current = null;
+            }
+        };
+    }, [lastUpdateTime, onZero, timerStopped]);
 
-        calculateTimeLeft();
-        const timer = setInterval(calculateTimeLeft, 1000);
-        return () => clearInterval(timer);
-    }, [lastUpdateTime, onZero]);
+    const handleButtonClick = () => {
+        console.log("Continue button clicked");
+        onContinue();
+    };
 
     return (
         <div className="flex flex-col items-center space-y-2">
-            <p className="text-sm font-medium">Next Reward In:</p>
-            <div className="text-lg font-bold">
-                {`${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`}
-            </div>
-            <Progress 
-                value={(60 - timeLeft) * (100/60)} 
-                className="h-1 w-full"
-            />
+            {!timerStopped ? (
+                <>
+                    <p className="text-sm font-medium">Next Reward In:</p>
+                    <div className="text-lg font-bold">
+                        {`0:${timeLeft.toString().padStart(2, '0')}`}
+                    </div>
+                    <Progress 
+                        value={(60 - timeLeft) * (100/60)} 
+                        className="h-1 w-full"
+                    />
+                </>
+            ) : (
+                <div className="text-center">
+                    <p className="text-sm mb-2">Rewards paused</p>
+                    <Button 
+                        onClick={handleButtonClick}
+                        size="sm"
+                    >
+                        Continue Staking
+                    </Button>
+                </div>
+            )}
         </div>
     );
 };
@@ -113,10 +189,15 @@ const StakingTab: React.FC<{
         stakedTime: string;
         projectedAnnualReward: string;
     } | null>(null);
+    const [timerStopped, setTimerStopped] = useState(false);
+    
+    // Refs for reward calculation
+    const initialStakeTimeRef = useRef<number>(0);
+    const stakeAmountRef = useRef<string>('0');
+    const rewardRateRef = useRef<number>(0);
+    const baseRewardRef = useRef<string>('0');
 
-    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const hasActiveStakeRef = useRef<boolean>(false);
-
+    // Log transaction events
     const logTransaction = (action: string, details: any) => {
         const timestamp = new Date().toISOString();
         console.log(`[${timestamp}] ${action}:`, {
@@ -125,24 +206,78 @@ const StakingTab: React.FC<{
         });
     };
 
-    const loadStakingInfo = async (forceUpdate = false) => {
+    // Calculate real-time rewards
+    const updateRewardsInRealtime = () => {
+        if (!stakingInfo || timerStopped) return;
+        
+        const stakedAmount = parseFloat(stakeAmountRef.current);
+        if (stakedAmount <= 0 || rewardRateRef.current <= 0) return;
+        
+        const baseReward = parseFloat(baseRewardRef.current);
+        const now = Math.floor(Date.now() / 1000);
+        const timeElapsed = now - lastRewardTime;
+        
+        if (timeElapsed <= 0) return;
+        
+        // Calculate new rewards
+        const minutesElapsed = timeElapsed / 60;
+        const newReward = stakedAmount * (rewardRateRef.current / 100) * minutesElapsed;
+        const totalReward = baseReward + newReward;
+        
+        // Update the UI
+        setStakingInfo(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                pendingReward: totalReward.toFixed(6)
+            };
+        });
+    };
+
+    // Load staking info from contract
+    const loadStakingInfo = async (resetTimer = false) => {
         if (!stakingContract || !wethContract || !usdcContract || !account || !provider) return;
 
         try {
             setError('');
             
-            const [stakedAmount, pendingReward, startTime, lastRewardTime] = 
+            const [stakedAmount, pendingReward, startTime, contractLastRewardTime] = 
                 await stakingContract.getStakeInfo(account);
-            
-            // Update active stake ref
-            hasActiveStakeRef.current = stakedAmount.gt(0);
             
             // Get balances
             const wethBalance = await wethContract.balanceOf(account);
             const usdcBalance = await usdcContract.balanceOf(account);
             const poolBalance = await usdcContract.balanceOf(stakingContract.address);
 
-            // Update UI with current values
+            // Store values for reward calculation
+            if (stakedAmount.gt(0)) {
+                // Update refs for calculation
+                stakeAmountRef.current = ethers.utils.formatEther(stakedAmount);
+                initialStakeTimeRef.current = startTime.toNumber();
+                baseRewardRef.current = ethers.utils.formatUnits(pendingReward, 6);
+                
+                // Update timer state if needed
+                if (resetTimer) {
+                    // Force timer to restart
+                    setTimerStopped(false);
+                    setLastRewardTime(Math.floor(Date.now() / 1000));
+                } else {
+                    // Check if timer should be running or stopped
+                    const now = Math.floor(Date.now() / 1000);
+                    const contractTime = contractLastRewardTime.toNumber();
+                    const elapsed = now - contractTime;
+                    
+                    if (elapsed >= 60) {
+                        setTimerStopped(true);
+                    } else if (timerStopped) {
+                        // Only update if currently stopped
+                        setTimerStopped(false);
+                        setLastRewardTime(contractTime);
+                    }
+                }
+            }
+
+            // Update UI state
             setStakingInfo({
                 stakedAmount: ethers.utils.formatEther(stakedAmount),
                 pendingReward: ethers.utils.formatUnits(pendingReward, 6),
@@ -154,33 +289,18 @@ const StakingTab: React.FC<{
                 usdcBalance: ethers.utils.formatUnits(poolBalance, 6)
             });
 
-            // Only log and update timer if there's an active stake or pending rewards
-            if (stakedAmount.gt(0) || pendingReward.gt(0)) {
-                if (stakedAmount.gt(0)) {
-                    setLastRewardTime(lastRewardTime.toNumber());
-                }
-
-                console.log('Stake Status:', {
-                    timestamp: new Date().toISOString(),
-                    hasActiveStake: stakedAmount.gt(0),
-                    stakedAmount: ethers.utils.formatEther(stakedAmount),
-                    pendingReward: ethers.utils.formatUnits(pendingReward, 6),
-                    startTime: startTime.toString(),
-                    lastRewardTime: lastRewardTime.toString(),
-                    currentBlockTime: Math.floor(Date.now() / 1000)
+            if (stakedAmount.gt(0)) {
+                const [rate, daily, time, annual] = await stakingContract.getRewardInfo(account);
+                rewardRateRef.current = Number(rate) / 100;
+                
+                setRewardInfo({
+                    rewardRate: (Number(rate) / 100).toFixed(2),
+                    dailyReward: ethers.utils.formatUnits(daily, 6),
+                    stakedTime: (Number(time) / 60).toFixed(0),
+                    projectedAnnualReward: ethers.utils.formatUnits(annual, 6)
                 });
-
-                if (stakedAmount.gt(0)) {
-                    const [rate, daily, time, annual] = await stakingContract.getRewardInfo(account);
-                    setRewardInfo({
-                        rewardRate: (Number(rate) / 100).toFixed(2),
-                        dailyReward: ethers.utils.formatUnits(daily, 6),
-                        stakedTime: Math.floor(Number(time) / 60).toString(),
-                        projectedAnnualReward: ethers.utils.formatUnits(annual, 6)
-                    });
-                } else {
-                    setRewardInfo(null);
-                }
+            } else {
+                setRewardInfo(null);
             }
 
         } catch (err) {
@@ -189,30 +309,99 @@ const StakingTab: React.FC<{
         }
     };
 
+    // Initial load and periodic refresh
     useEffect(() => {
         if (stakingContract && account) {
-            // Initial load
-            loadStakingInfo(true);
-
-            // Setup polling
-            pollingIntervalRef.current = setInterval(() => {
-                if (hasActiveStakeRef.current) {
-                    loadStakingInfo();
-                }
-            }, 3000);
-
-            return () => {
-                if (pollingIntervalRef.current) {
-                    clearInterval(pollingIntervalRef.current);
-                    pollingIntervalRef.current = null;
-                }
-            };
+            loadStakingInfo(false);
+            const interval = setInterval(() => loadStakingInfo(false), 30000);
+            return () => clearInterval(interval);
         }
     }, [stakingContract, account]);
 
-    const handleCountdownFinish = async () => {
-        await loadStakingInfo(true);
+    // Real-time reward updates
+    useEffect(() => {
+        if (!timerStopped && stakingInfo && parseFloat(stakingInfo.stakedAmount) > 0) {
+            console.log("Starting real-time reward updates");
+            
+            // Update immediately 
+            updateRewardsInRealtime();
+            
+            // Then update every second
+            const interval = setInterval(updateRewardsInRealtime, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [stakingInfo?.stakedAmount, timerStopped, lastRewardTime]);
+
+    const handleCountdownFinish = () => {
+        setTimerStopped(true);
+        console.log('Timer finished, rewards paused');
     };
+
+    // Simplify the Continue Staking function
+    const handleContinueStaking = async () => {
+        if (!stakingContract || !account) return;
+        
+        try {
+            setLoading(true);
+            console.log("Continue staking started at", new Date().toISOString());
+            
+            // 1. Store current rewards to chain
+            const tx = await stakingContract.storeCurrentRewards();
+            await tx.wait();
+            console.log("Transaction complete");
+            
+            // 2. Get latest reward amount
+            const [_, pendingReward, __, ___] = await stakingContract.getStakeInfo(account);
+            const rewardAmount = ethers.utils.formatUnits(pendingReward, 6);
+            console.log("Current reward from contract:", rewardAmount);
+            
+            // 3. Update base reward reference
+            baseRewardRef.current = rewardAmount;
+            
+            // 4. Crucial fix - create a new timestamp
+            const newTimestamp = Math.floor(Date.now() / 1000);
+            console.log("Setting new timer timestamp:", newTimestamp);
+            
+            // 5. Force a direct update to stakingInfo to ensure UI updates
+            if (stakingInfo) {
+                setStakingInfo({
+                    ...stakingInfo,
+                    pendingReward: rewardAmount
+                });
+            }
+            
+            // 6. Update timer state AFTER other state changes
+            // This is key - the timestamp must be set before turning timer on
+            window.setTimeout(() => {
+                setLastRewardTime(newTimestamp);
+                console.log("New timestamp set:", newTimestamp);
+                
+                window.setTimeout(() => {
+                    setTimerStopped(false);
+                    console.log("Timer restarted");
+                    setLoading(false);
+                }, 10);
+            }, 10);
+            
+        } catch (err) {
+            console.error('Failed to continue staking:', err);
+            setError(getSimplifiedErrorMessage(err));
+            setLoading(false);
+        }
+    };
+
+    // Add this to track when rewards useEffect triggers
+    useEffect(() => {
+        // Track reward update effect
+        console.log(`Reward effect triggered: timerStopped=${timerStopped}, staked=${stakingInfo?.stakedAmount || 0}`);
+        
+        // Add more logging in the handler
+        if (!timerStopped && stakingInfo && parseFloat(stakingInfo.stakedAmount) > 0) {
+            console.log(`✅ Starting real-time rewards with timestamp ${lastRewardTime}`);
+        } else {
+            console.log(`❌ Not starting rewards: stopped=${timerStopped}, staked=${stakingInfo?.stakedAmount || 0}`);
+        }
+    }, [stakingInfo?.stakedAmount, timerStopped, lastRewardTime]);
 
     const handleStake = async () => {
         if (!stakingContract || !wethContract || !stakeAmount) return;
@@ -228,28 +417,28 @@ const StakingTab: React.FC<{
             const approveTx = await wethContract.approve(stakingContract.address, amount);
             await approveTx.wait();
             
-            logTransaction('WETH_APPROVED', { 
-                amount: stakeAmount,
-                txHash: approveTx.hash 
-            });
-
             // Then stake
             const stakeTx = await stakingContract.stake(amount);
-            const receipt = await stakeTx.wait();
+            await stakeTx.wait();
             
             logTransaction('STAKE_COMPLETED', { 
                 amount: stakeAmount,
-                txHash: receipt.transactionHash 
+                txHash: stakeTx.hash
             });
 
-            await loadStakingInfo(true);
+            // Reset timer to current time
+            setTimerStopped(false);
+            setLastRewardTime(Math.floor(Date.now() / 1000));
+            
+            // Set stakeAmount to empty before loadStakingInfo to prevent UI flicker
             setStakeAmount('');
+            
+            // Then load updated info
+            await loadStakingInfo(false);
+            
         } catch (err) {
             console.error('Staking failed:', err);
             setError(getSimplifiedErrorMessage(err));
-            logTransaction('STAKE_FAILED', { 
-                error: err instanceof Error ? err.message : 'Unknown error occurred'
-            });
         }
         
         setLoading(false);
@@ -267,22 +456,20 @@ const StakingTab: React.FC<{
             const tx = await stakingContract.withdraw(amount);
             await tx.wait();
             
-            // Force immediate update after withdrawal
-            await loadStakingInfo(true);
-            
-            // Clear withdrawal amount
-            setWithdrawAmount('');
-            
             logTransaction('WITHDRAW_COMPLETED', { 
                 amount: withdrawAmount,
                 txHash: tx.hash
             });
+
+            // Set withdrawAmount to empty before loadStakingInfo
+            setWithdrawAmount('');
+            
+            // Then load updated info
+            await loadStakingInfo(false);
+            
         } catch (err) {
             console.error('Withdrawal failed:', err);
             setError(getSimplifiedErrorMessage(err));
-            logTransaction('WITHDRAW_FAILED', { 
-                error: err instanceof Error ? err.message : 'Unknown error occurred'
-            });
         }
         
         setLoading(false);
@@ -299,33 +486,33 @@ const StakingTab: React.FC<{
         setError('');
         
         try {
-            const initialUsdcBalance = await usdcContract.balanceOf(account);
+            // If timer is stopped, store rewards first
+            if (timerStopped) {
+                const storeTx = await stakingContract.storeCurrentRewards();
+                await storeTx.wait();
+            }
             
-            logTransaction('CLAIM_STARTED', {
-                pendingReward: stakingInfo.pendingReward
-            });
-
-            const tx = await stakingContract.claimReward();
-            const receipt = await tx.wait();
-            
-            const finalUsdcBalance = await usdcContract.balanceOf(account);
-            const claimedAmount = ethers.utils.formatUnits(
-                finalUsdcBalance.sub(initialUsdcBalance),
-                6
-            );
+            // Then claim rewards
+            const claimTx = await stakingContract.claimReward();
+            await claimTx.wait();
             
             logTransaction('CLAIM_COMPLETED', {
-                txHash: receipt.transactionHash,
-                claimedAmount
+                txHash: claimTx.hash,
+                amount: stakingInfo.pendingReward
             });
             
-            await loadStakingInfo(true);
+            // Reset timer after claiming
+            setTimerStopped(false);
+            setLastRewardTime(Math.floor(Date.now() / 1000));
+            
+            // Reset base reward since we've claimed everything
+            baseRewardRef.current = '0';
+            
+            // Load updated info
+            await loadStakingInfo(false);
         } catch (err) {
             console.error('Reward claim failed:', err);
             setError(getSimplifiedErrorMessage(err));
-            logTransaction('CLAIM_FAILED', { 
-                error: err instanceof Error ? err.message : 'Unknown error occurred'
-            });
         }
         
         setLoading(false);
@@ -351,8 +538,10 @@ const StakingTab: React.FC<{
                             <p className="text-sm mb-1">Pending USDC Rewards: {stakingInfo.pendingReward} USDC</p>
                             {parseFloat(stakingInfo.stakedAmount) > 0 && (
                                 <CountdownTimer 
-                                    lastUpdateTime={lastRewardTime} 
+                                    lastUpdateTime={lastRewardTime}
                                     onZero={handleCountdownFinish}
+                                    onContinue={handleContinueStaking}
+                                    timerStopped={timerStopped}
                                 />
                             )}
                         </div>
