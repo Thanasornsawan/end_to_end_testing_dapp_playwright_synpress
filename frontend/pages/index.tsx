@@ -140,11 +140,11 @@ export default function Home() {
           await processEvent('WITHDRAW', token, user, amount, event);
         });
 
-        lendingProtocol.on('Borrow', async (token, user, amount, event) => {
+        lendingProtocol.on('Borrow', async (token, user, amount, interestIndex, event) => {
           await processEvent('BORROW', token, user, amount, event);
         });
 
-        lendingProtocol.on('Repay', async (token, user, amount, event) => {
+        lendingProtocol.on('Repay', async (token, user, amount, interestPaid, event) => {
           await processEvent('REPAY', token, user, amount, event);
         });
 

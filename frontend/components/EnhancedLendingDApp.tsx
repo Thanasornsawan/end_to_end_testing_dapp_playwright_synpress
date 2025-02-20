@@ -31,13 +31,15 @@ interface EnhancedLendingDAppProps {
 }
 
 interface Position {
-  depositAmount: string;
-  borrowAmount: string;
-  healthFactor: string;
-  lastUpdateTime: string;
-}
+    depositAmount: string;
+    borrowAmount: string;
+    interestAccrued: string;
+    healthFactor: string;
+    lastUpdateTime: string;
+    interestRate: string;
+  }
 
-const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({ 
+  const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({ 
     account, 
     provider, 
     onConnect 
@@ -54,6 +56,7 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
     const [stakingContract, setStakingContract] = useState<StakingPool | null>(null);
     const [wethContract, setWethContract] = useState<MockWETH | null>(null);
     const [usdcContract, setUsdcContract] = useState<MockUSDC | null>(null);
+    const [lendingProtocol, setLendingProtocol] = useState<EnhancedLendingProtocol | null>(null);
   
     // Log user actions
     const logAction = (action: string, details: any) => {
@@ -80,6 +83,8 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
         if (!wethContract || !account) return;
         try {
             const wethBalance = await wethContract.balanceOf(account);
+            console.log('Updated WETH balance:', ethers.utils.formatEther(wethBalance));
+            
             setBalances({
                 weth: ethers.utils.formatEther(wethBalance)
             });
@@ -107,6 +112,26 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
       init();
     }, [provider, account]);
 
+    // Periodically refresh position to show interest accrual
+    useEffect(() => {
+        if (provider && account && wethAddress) {
+            const refreshPosition = async () => {
+                try {
+                    await loadUserPosition(account, provider);
+                } catch (err) {
+                    console.error('Error refreshing position:', err);
+                }
+            };
+            
+            // Initial load
+            refreshPosition();
+            
+            // Set up interval to refresh position every 15 seconds for more frequent updates
+            const interval = setInterval(refreshPosition, 15000);
+            return () => clearInterval(interval);
+        }
+    }, [provider, account, wethAddress]);
+
     const initializeContract = async (
         userAddress: string,
         web3Provider: ethers.providers.Web3Provider
@@ -118,6 +143,7 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
 
             // Initialize core protocol
             const { lendingProtocol } = await getContracts(web3Provider);
+            setLendingProtocol(lendingProtocol);
             const weth = await lendingProtocol.weth();
             setWethAddress(weth);
           
@@ -158,12 +184,37 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
         try {
           const { lendingProtocol } = await getContracts(web3Provider);
           const weth = await lendingProtocol.weth();
+          
+          // Get base position data
           const position = await lendingProtocol.userPositions(weth, userAddress);
           const healthFactor = await lendingProtocol.getHealthFactor(userAddress);
+          
+          // Get token config for interest rate
+          const tokenConfig = await lendingProtocol.tokenConfigs(weth);
+          
+          // Get accumulated interest (if contract supports it)
+          let interestAccrued = '0';
+          try {
+              // This will throw if getCurrentBorrowAmount doesn't exist in the contract
+              const currentBorrowAmount = await lendingProtocol.getCurrentBorrowAmount(weth, userAddress);
+              //console.log('Current borrow with interest:', ethers.utils.formatEther(currentBorrowAmount));
+              //console.log('Original borrow amount:', ethers.utils.formatEther(position.borrowAmount));
+              
+              if (currentBorrowAmount.gt(position.borrowAmount)) {
+                  interestAccrued = formatEther(currentBorrowAmount.sub(position.borrowAmount));
+                  console.log('Interest accrued:', interestAccrued);
+              }
+          } catch (err) {
+              console.log('Interest calculation not supported in contract:', err);
+          }
       
           setPosition({
             depositAmount: formatEther(position.depositAmount),
             borrowAmount: formatEther(position.borrowAmount),
+            interestAccrued: interestAccrued,
+            interestRate: tokenConfig.interestRate.toString() ? 
+                (parseFloat(tokenConfig.interestRate.toString()) / 100).toFixed(2) + '%' : 
+                'N/A',
             healthFactor: formatEther(healthFactor),
             lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000).toLocaleString()
           });
@@ -352,38 +403,117 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
   };
 
   const handleRepay = async () => {
-    if (!provider || !repayAmount || !wethAddress) return;
+    if (!provider || !repayAmount || !wethAddress || !wethContract) return;
     setLoading(true);
     setError('');
     try {
         logAction('REPAY_STARTED', { amount: repayAmount });
-      const { lendingProtocol } = await getContracts(provider);
-      
-      // Check borrow amount first
-      const position = await lendingProtocol.userPositions(wethAddress, account);
-      if (parseFloat(repayAmount) > parseFloat(ethers.utils.formatEther(position.borrowAmount))) {
-        throw new Error("Cannot repay more than borrowed amount");
-      }
-  
-      const tx = await lendingProtocol.repay(
-        wethAddress,
-        parseEther(repayAmount),
-        { value: parseEther(repayAmount) }
-      );
-      const receipt = await tx.wait();
+        const { lendingProtocol } = await getContracts(provider);
+        const signer = provider.getSigner();
         
-      logAction('REPAY_COMPLETED', {
-        amount: repayAmount,
-        txHash: receipt.transactionHash
-      });
-      await loadUserPosition(account, provider);
-      await loadBalances(); 
-      setRepayAmount('');
+        // Get current borrow amount with interest
+        let currentBorrowWithInterest;
+        try {
+            currentBorrowWithInterest = await lendingProtocol.getCurrentBorrowAmount(wethAddress, account);
+            console.log('Current borrow with interest:', ethers.utils.formatEther(currentBorrowWithInterest));
+        } catch (err) {
+            console.warn('getCurrentBorrowAmount failed, falling back to position.borrowAmount');
+            const position = await lendingProtocol.userPositions(wethAddress, account);
+            currentBorrowWithInterest = position.borrowAmount;
+        }
+        
+        if (parseFloat(repayAmount) > parseFloat(ethers.utils.formatEther(currentBorrowWithInterest))) {
+            throw new Error("Cannot repay more than borrowed amount");
+        }
+  
+        // Get initial WETH balance
+        const initialWethBalance = await wethContract.balanceOf(account);
+        console.log('Initial WETH balance before repay:', ethers.utils.formatEther(initialWethBalance));
+        
+        // We have two options for repayment:
+        
+        // Option 1: Use WETH tokens directly (needs approval first)
+        if (parseFloat(ethers.utils.formatEther(initialWethBalance)) >= parseFloat(repayAmount)) {
+            console.log("Repaying with WETH tokens");
+            
+            // Check if we have approval
+            const allowance = await wethContract.allowance(account, lendingProtocol.address);
+            if (allowance.lt(parseEther(repayAmount))) {
+                console.log("Approving WETH spend");
+                const approveTx = await wethContract.approve(
+                    lendingProtocol.address,
+                    parseEther(repayAmount)
+                );
+                await approveTx.wait();
+                console.log("WETH approved for spending");
+            }
+            
+            // Call repay without sending ETH
+            const tx = await lendingProtocol.repay(
+                wethAddress,
+                parseEther(repayAmount),
+                { gasLimit: 500000 } // No ETH value sent
+            );
+            await tx.wait();
+        }
+        // Option 2: Send ETH directly
+        else {
+            console.log("Repaying with ETH");
+            const tx = await lendingProtocol.repay(
+                wethAddress,
+                parseEther(repayAmount),
+                { 
+                    value: parseEther(repayAmount),
+                    gasLimit: 500000
+                }
+            );
+            await tx.wait();
+        }
+        
+        // Check balances after repayment
+        const newWethBalance = await wethContract.balanceOf(account);
+        //console.log('WETH balance after repay:', ethers.utils.formatEther(newWethBalance));
+        
+        // Force update UI
+        setBalances({
+            weth: ethers.utils.formatEther(newWethBalance)
+        });
+            
+        // Update position
+        await loadUserPosition(account, provider);
+        
+        // Do one more balance refresh after a short delay
+        setTimeout(async () => {
+            try {
+                await loadBalances();
+            } catch (error) {
+                console.error("Failed to refresh balances after timeout:", error);
+            }
+        }, 3000);
+        
+        setRepayAmount('');
+        
+        logAction('REPAY_COMPLETED', {
+            amount: repayAmount,
+            method: parseFloat(ethers.utils.formatEther(initialWethBalance)) >= parseFloat(repayAmount) 
+                ? 'WETH_TOKENS' : 'ETH',
+            wethBalanceBefore: ethers.utils.formatEther(initialWethBalance),
+            wethBalanceAfter: ethers.utils.formatEther(newWethBalance)
+        });
     } catch (err) {
-      console.error('Repay failed:', err);
-      setError(getSimplifiedErrorMessage(err));
+        console.error('Repay failed:', err);
+        setError(getSimplifiedErrorMessage(err));
     }
     setLoading(false);
+  };
+
+  // Function to calculate total repayment amount (principal + interest)
+  const getTotalRepaymentAmount = () => {
+    if (!position) return '0';
+    
+    const principal = parseFloat(position.borrowAmount);
+    const interest = parseFloat(position.interestAccrued);
+    return (principal + interest).toFixed(6);
   };
 
   return (
@@ -412,12 +542,22 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
                         <div>
                             <p className="text-sm">Deposit: {position.depositAmount} ETH</p>
                             <p className="text-sm">Borrow: {position.borrowAmount} ETH</p>
+                            {parseFloat(position.interestAccrued) > 0 && (
+                                <p className="text-sm text-amber-600">
+                                    Interest Accrued: {position.interestAccrued} ETH
+                                </p>
+                            )}
+                            <p className="text-xs text-gray-600 mt-1">
+                                Interest Rate: {position.interestRate}/year
+                            </p>
                         </div>
                         <div>
                             <p className="text-sm">Health Factor: {position.healthFactor}</p>
                             <Progress 
                                 value={parseFloat(position.healthFactor) * 10} 
                                 className="h-2"
+                                color={parseFloat(position.healthFactor) < 1.2 ? "red" : 
+                                       parseFloat(position.healthFactor) < 1.5 ? "amber" : "green"}
                             />
                             <p className="text-sm mt-2">Last Update: {position.lastUpdateTime}</p>
                         </div>
@@ -471,7 +611,17 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
 
                     <TabsContent value="borrow">
                         <div className="space-y-4">
-                        <BalanceDisplay balances={balances} />
+                            <BalanceDisplay balances={balances} />
+                            
+                            {position && parseFloat(position.interestAccrued) > 0 && (
+                                <Alert className="bg-amber-50 border-amber-200">
+                                    <AlertDescription>
+                                        <span className="font-medium">Interest is accruing!</span> Your current 
+                                        loan will cost {position.interestAccrued} ETH in interest if repaid now.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
+                            
                             <div className="space-y-2">
                                 <Input
                                     type="number"
@@ -487,6 +637,11 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
                                 >
                                     Borrow
                                 </Button>
+                                {position && position.interestRate !== 'N/A' && (
+                                    <p className="text-xs text-gray-600 mt-1">
+                                        Interest rate: {position.interestRate} per year
+                                    </p>
+                                )}
                             </div>
 
                             <div className="space-y-2">
@@ -504,6 +659,11 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
                                 >
                                     Repay
                                 </Button>
+                                {position && parseFloat(position.borrowAmount) > 0 && (
+                                    <p className="text-xs text-gray-600 mt-1">
+                                        Total to repay fully: {getTotalRepaymentAmount()} ETH
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </TabsContent>
