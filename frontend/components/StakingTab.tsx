@@ -334,7 +334,62 @@ const StakingTab: React.FC<{
 
     const handleCountdownFinish = () => {
         setTimerStopped(true);
-        console.log('Timer finished, rewards paused');
+        
+        // Preserve the last calculated reward when timer stops
+        if (stakingInfo) {
+            // Store the current calculated value as our base for future calculations
+            const currentReward = stakingInfo.pendingReward;
+            baseRewardRef.current = currentReward;
+            
+            console.log('Timer finished, rewards paused. Preserving value:', currentReward);
+        }
+    };
+
+    const getCurrentReward = () => {
+        if (!stakingInfo) return "0.0";
+        
+        // If not staked, always show contract value (should be 0)
+        if (parseFloat(stakingInfo.stakedAmount) <= 0) {
+            return stakingInfo.pendingReward;
+        }
+        
+        const stakedAmount = parseFloat(stakeAmountRef.current);
+        if (stakedAmount <= 0 || rewardRateRef.current <= 0) {
+            return stakingInfo.pendingReward;
+        }
+        
+        // If timer is stopped, return the preserved value
+        if (timerStopped) {
+            return baseRewardRef.current || stakingInfo.pendingReward;
+        }
+        
+        // Calculate real-time value
+        const baseReward = parseFloat(baseRewardRef.current);
+        const now = Math.floor(Date.now() / 1000);
+        const timeElapsed = now - lastRewardTime;
+        
+        if (timeElapsed <= 0) {
+            return stakingInfo.pendingReward;
+        }
+        
+        // Calculate new rewards
+        const minutesElapsed = timeElapsed / 60;
+        const newReward = stakedAmount * (rewardRateRef.current / 100) * minutesElapsed;
+        const totalReward = baseReward + newReward;
+        
+        return totalReward.toFixed(6);
+    };
+
+    const shouldShowRealtimeRewards = () => {
+        if (!stakingInfo) return false;
+        
+        // Only show real-time rewards if there's an active stake
+        const isStaked = parseFloat(stakingInfo.stakedAmount) > 0;
+        
+        // And timer is running
+        const isTimerRunning = !timerStopped;
+        
+        return isStaked && isTimerRunning;
     };
 
     // Simplify the Continue Staking function
@@ -475,6 +530,7 @@ const StakingTab: React.FC<{
         setLoading(false);
     };
 
+    // Updated handleClaimRewards to ensure timer state is correct
     const handleClaimRewards = async () => {
         if (!stakingContract || !usdcContract || !stakingInfo) return;
         if (parseFloat(stakingInfo.pendingReward) <= 0) {
@@ -501,12 +557,32 @@ const StakingTab: React.FC<{
                 amount: stakingInfo.pendingReward
             });
             
-            // Reset timer after claiming
-            setTimerStopped(false);
-            setLastRewardTime(Math.floor(Date.now() / 1000));
-            
             // Reset base reward since we've claimed everything
             baseRewardRef.current = '0';
+            
+            // Get the latest staking info from the contract to check timer state
+            const [stakedAmount, _, __, lastRewardTimeContract] = 
+                await stakingContract.getStakeInfo(account);
+                
+            // Only if user still has stake after claiming
+            if (stakedAmount.gt(0)) {
+                const now = Math.floor(Date.now() / 1000);
+                const contractTime = lastRewardTimeContract.toNumber();
+                const elapsed = now - contractTime;
+                
+                // Check if timer should be running or stopped
+                if (elapsed >= 60) {
+                    console.log("Timer should be stopped after claim");
+                    setTimerStopped(true);
+                } else {
+                    console.log("Timer should be running after claim");
+                    setTimerStopped(false);
+                    setLastRewardTime(contractTime);
+                }
+            } else {
+                // If no stake after claiming, don't show timer
+                console.log("No stake after claiming, timer not needed");
+            }
             
             // Load updated info
             await loadStakingInfo(false);
@@ -535,7 +611,9 @@ const StakingTab: React.FC<{
                             <p className="text-sm">USDC Balance: {stakingInfo.usdcBalance} USDC</p>
                         </div>
                         <div>
-                            <p className="text-sm mb-1">Pending USDC Rewards: {stakingInfo.pendingReward} USDC</p>
+                            <p className="text-sm mb-1">
+                                Pending USDC Rewards: {shouldShowRealtimeRewards() ? getCurrentReward() : stakingInfo.pendingReward} USDC
+                            </p>
                             {parseFloat(stakingInfo.stakedAmount) > 0 && (
                                 <CountdownTimer 
                                     lastUpdateTime={lastRewardTime}
