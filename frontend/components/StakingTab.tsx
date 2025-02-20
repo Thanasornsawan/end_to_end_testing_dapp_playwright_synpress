@@ -234,13 +234,14 @@ const StakingTab: React.FC<{
         });
     };
 
-    // Load staking info from contract
+    // Modify loadStakingInfo to preserve estimated rewards during periodic refresh
     const loadStakingInfo = async (updateTimer = true) => {
         if (!stakingContract || !wethContract || !usdcContract || !account || !provider) return;
-    
+
         try {
             setError('');
-            console.log("Loading staking info, updateTimer:", updateTimer);
+            const isPeriodicRefresh = !updateTimer;
+            console.log("Loading staking info, updateTimer:", updateTimer, "isPeriodicRefresh:", isPeriodicRefresh);
             
             const [stakedAmount, pendingReward, startTime, contractLastRewardTime] = 
                 await stakingContract.getStakeInfo(account);
@@ -249,11 +250,23 @@ const StakingTab: React.FC<{
             const wethBalance = await wethContract.balanceOf(account);
             const usdcBalance = await usdcContract.balanceOf(account);
             const poolBalance = await usdcContract.balanceOf(stakingContract.address);
-    
-            // Update refs for calculation
-            stakeAmountRef.current = ethers.utils.formatEther(stakedAmount);
-            initialStakeTimeRef.current = startTime.toNumber();
-            baseRewardRef.current = ethers.utils.formatUnits(pendingReward, 6);
+
+            // Check if this is first time staking with timer stopped
+            const isFirstTimeStake = stakedAmount.gt(0) && pendingReward.isZero() && timerStopped;
+            const hasPreservedReward = parseFloat(baseRewardRef.current) > 0;
+            
+            // CRITICAL: Preserve the estimated reward during periodic refresh
+            // Only update baseRewardRef if this is not a periodic refresh that would override preserved value
+            if (!(isPeriodicRefresh && isFirstTimeStake && hasPreservedReward)) {
+                // Normal case - update refs
+                stakeAmountRef.current = ethers.utils.formatEther(stakedAmount);
+                initialStakeTimeRef.current = startTime.toNumber();
+                
+                // Only update the stored reward if there's no preserved value or this isn't a periodic refresh
+                if (!hasPreservedReward || !isPeriodicRefresh) {
+                    baseRewardRef.current = ethers.utils.formatUnits(pendingReward, 6);
+                }
+            }
             
             // Only update timer state if explicitly told to
             if (updateTimer && stakedAmount.gt(0)) {
@@ -268,19 +281,30 @@ const StakingTab: React.FC<{
                     setLastRewardTime(contractTime);
                 }
             }
-    
+
+            // Prepare stakingInfo update, but preserve rewards if needed
+            let pendingRewardToShow = ethers.utils.formatUnits(pendingReward, 6);
+            
+            // If this is a periodic refresh AND timer is stopped AND we have preserved rewards,
+            // then don't update the displayed pending reward
+            if (isPeriodicRefresh && timerStopped && hasPreservedReward) {
+                console.log("Preserving estimated reward during refresh:", baseRewardRef.current);
+                // Use the current stakingInfo value if available, otherwise use baseRewardRef
+                pendingRewardToShow = stakingInfo?.pendingReward || baseRewardRef.current;
+            }
+
             // Update UI state
             setStakingInfo({
                 stakedAmount: ethers.utils.formatEther(stakedAmount),
-                pendingReward: ethers.utils.formatUnits(pendingReward, 6),
+                pendingReward: pendingRewardToShow,
                 wethBalance: ethers.utils.formatEther(wethBalance),
                 usdcBalance: ethers.utils.formatUnits(usdcBalance, 6)
             });
-    
+
             setPoolInfo({
                 usdcBalance: ethers.utils.formatUnits(poolBalance, 6)
             });
-    
+
             if (stakedAmount.gt(0)) {
                 const [rate, daily, time, annual] = await stakingContract.getRewardInfo(account);
                 rewardRateRef.current = Number(rate) / 100;
@@ -294,18 +318,25 @@ const StakingTab: React.FC<{
             } else {
                 setRewardInfo(null);
             }
-    
+
         } catch (err) {
             console.error('Error loading staking info:', err instanceof Error ? err.message : 'Unknown error');
             setError('Failed to load staking information');
         }
     };
 
-    // Initial load and periodic refresh
+    // Modify the periodic refresh interval to be safer
     useEffect(() => {
         if (stakingContract && account) {
-            loadStakingInfo(false);
-            const interval = setInterval(() => loadStakingInfo(false), 30000);
+            // Initial load
+            loadStakingInfo(true);
+            
+            // Set up periodic refresh that preserves values
+            const interval = setInterval(() => {
+                // Don't update timer state on periodic refresh
+                loadStakingInfo(false);
+            }, 30000);
+            
             return () => clearInterval(interval);
         }
     }, [stakingContract, account]);
@@ -327,15 +358,37 @@ const StakingTab: React.FC<{
     const handleCountdownFinish = () => {
         setTimerStopped(true);
         
-        // Preserve the last calculated reward when timer stops
-        if (stakingInfo) {
-            // Store the current calculated value as our base for future calculations
-            const currentReward = stakingInfo.pendingReward;
-            baseRewardRef.current = currentReward;
+        // Calculate and preserve the real-time reward value when timer stops
+        const stakedAmount = parseFloat(stakeAmountRef.current);
+        if (stakingInfo && stakedAmount > 0 && rewardRateRef.current > 0) {
+            // Calculate the reward that should be displayed
+            const now = Math.floor(Date.now() / 1000);
+            const baseReward = parseFloat(baseRewardRef.current);
+            const timeElapsed = now - lastRewardTime;
             
-            console.log('Timer finished, rewards paused. Preserving value:', currentReward);
+            if (timeElapsed > 0) {
+                const minutesElapsed = timeElapsed / 60;
+                const newReward = stakedAmount * (rewardRateRef.current / 100) * minutesElapsed;
+                const totalReward = baseReward + newReward;
+                
+                // Store this calculated value for display when timer is stopped
+                const finalReward = totalReward.toFixed(6);
+                baseRewardRef.current = finalReward;
+                
+                // Also update stakingInfo to show this value immediately
+                setStakingInfo({
+                    ...stakingInfo,
+                    pendingReward: finalReward
+                });
+                
+                console.log('Timer finished, rewards paused. Calculated and preserving value:', finalReward);
+            } else {
+                // If no time elapsed, preserve current value
+                baseRewardRef.current = stakingInfo.pendingReward;
+                console.log('Timer finished, rewards paused. Preserving current value:', stakingInfo.pendingReward);
+            }
         }
-    };
+    };    
 
     const getCurrentReward = () => {
         if (!stakingInfo) return "0.0";
@@ -345,17 +398,21 @@ const StakingTab: React.FC<{
             return stakingInfo.pendingReward;
         }
         
+        // If timer is stopped, show preserved value (important for first time staking)
+        if (timerStopped) {
+            // When timer is stopped, always return preserved value if it exists
+            if (baseRewardRef.current && parseFloat(baseRewardRef.current) > 0) {
+                return baseRewardRef.current;
+            }
+            return stakingInfo.pendingReward;
+        }
+        
+        // For running timer, calculate real-time rewards
         const stakedAmount = parseFloat(stakeAmountRef.current);
         if (stakedAmount <= 0 || rewardRateRef.current <= 0) {
             return stakingInfo.pendingReward;
         }
         
-        // If timer is stopped, return the preserved value
-        if (timerStopped) {
-            return baseRewardRef.current || stakingInfo.pendingReward;
-        }
-        
-        // Calculate real-time value
         const baseReward = parseFloat(baseRewardRef.current);
         const now = Math.floor(Date.now() / 1000);
         const timeElapsed = now - lastRewardTime;
@@ -375,13 +432,14 @@ const StakingTab: React.FC<{
     const shouldShowRealtimeRewards = () => {
         if (!stakingInfo) return false;
         
-        // Only show real-time rewards if there's an active stake
+        // Show real-time rewards if actively staked
         const isStaked = parseFloat(stakingInfo.stakedAmount) > 0;
         
-        // And timer is running
-        const isTimerRunning = !timerStopped;
+        // If timer is running OR (timer is stopped AND we have preserved rewards)
+        const shouldShow = !timerStopped || 
+            (timerStopped && parseFloat(baseRewardRef.current) > 0);
         
-        return isStaked && isTimerRunning;
+        return isStaked && shouldShow;
     };
 
     // Simplify the Continue Staking function
@@ -522,10 +580,33 @@ const StakingTab: React.FC<{
         setLoading(false);
     };
 
+    const canClaimRewards = () => {
+        if (!stakingInfo) return false;
+        if (loading) return false;
+        
+        // If we're showing real-time/estimated rewards, use that value
+        const displayedReward = shouldShowRealtimeRewards() ? 
+            getCurrentReward() : stakingInfo.pendingReward;
+        
+        // Check if there are any rewards to claim
+        return parseFloat(displayedReward) > 0;
+    };
+
     // Updated handleClaimRewards to ensure timer state is correct
+    // Complete fix for handleClaimRewards
     const handleClaimRewards = async () => {
         if (!stakingContract || !usdcContract || !stakingInfo) return;
-        if (parseFloat(stakingInfo.pendingReward) <= 0) {
+        
+        // Get displayed reward - same as what user sees
+        const displayReward = shouldShowRealtimeRewards() ? 
+            getCurrentReward() : stakingInfo.pendingReward;
+            
+        // Check if we're displaying estimated rewards that aren't yet on chain
+        const isEstimatedReward = timerStopped && 
+            parseFloat(displayReward) > 0 && 
+            parseFloat(stakingInfo.pendingReward) === 0;
+            
+        if (parseFloat(displayReward) <= 0) {
             setError('No rewards to claim');
             return;
         }
@@ -534,10 +615,20 @@ const StakingTab: React.FC<{
         setError('');
         
         try {
-            // If timer is stopped, store rewards first
-            if (timerStopped) {
+            // If we're showing estimated rewards but they aren't on chain yet,
+            // we need to store them first
+            if (isEstimatedReward || timerStopped) {
+                console.log("Storing current rewards before claiming...");
                 const storeTx = await stakingContract.storeCurrentRewards();
                 await storeTx.wait();
+                
+                // Very important: verify rewards were actually stored
+                const [_, updatedReward, __, ___] = await stakingContract.getStakeInfo(account);
+                const updatedRewardValue = parseFloat(ethers.utils.formatUnits(updatedReward, 6));
+                
+                if (updatedRewardValue <= 0) {
+                    throw new Error("No rewards available on-chain to claim. Please try again later.");
+                }
             }
             
             // Then claim rewards
@@ -546,7 +637,7 @@ const StakingTab: React.FC<{
             
             logTransaction('CLAIM_COMPLETED', {
                 txHash: claimTx.hash,
-                amount: stakingInfo.pendingReward
+                amount: displayReward
             });
             
             // Reset base reward since we've claimed everything
@@ -555,9 +646,8 @@ const StakingTab: React.FC<{
             // Get the latest staking info from contract
             const [stakedAmount, pendingReward, startTime, lastRewardTimeContract] = 
                 await stakingContract.getStakeInfo(account);
-             
-            // CRITICAL FIX: Force timer to stopped state after claiming
-            // This ensures "Continue Staking" button appears instead of timer
+                
+            // Force timer to stopped state after claiming if still staked
             if (stakedAmount.gt(0)) {
                 console.log("Forcing timer to stopped state after claim");
                 setTimerStopped(true);
@@ -657,7 +747,7 @@ const StakingTab: React.FC<{
 
             <Button 
                 onClick={handleClaimRewards} 
-                disabled={loading || !stakingInfo || parseFloat(stakingInfo.pendingReward) === 0}
+                disabled={!canClaimRewards()}
                 className="w-full"
             >
                 Claim USDC Rewards
