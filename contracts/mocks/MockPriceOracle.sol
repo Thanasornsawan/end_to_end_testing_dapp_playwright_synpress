@@ -19,6 +19,19 @@ contract MockPriceOracle is IPriceOracle, Ownable {
     }
 
     /**
+     * @notice Initialize oracle with default prices
+     * @param wethAddress The address of the WETH token
+     */
+    function setInitialPrices(address wethAddress) external onlyOwner {
+        // Set WETH price to $2000 (scaled to 18 decimals)
+        uint256 wethPrice = 2000 * 10**18;
+        prices[wethAddress] = wethPrice;
+        lastUpdateTimes[wethAddress] = block.timestamp;
+        
+        emit PriceUpdated(wethAddress, wethPrice, block.timestamp);
+    }
+
+    /**
      * @notice Get the price of a token
      * @param token The address of the token
      * @return The price of the token

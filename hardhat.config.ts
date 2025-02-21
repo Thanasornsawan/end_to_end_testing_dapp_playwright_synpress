@@ -54,6 +54,7 @@ const config: CustomHardhatConfig = {
         enabled: true,
         runs: 200,
       },
+      viaIR: true  // Enable IR-based code generation
     },
   },
    networks: {

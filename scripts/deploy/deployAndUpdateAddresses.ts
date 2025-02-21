@@ -81,16 +81,24 @@ async function main() {
   // Add delay to ensure contract is ready
   await new Promise(resolve => setTimeout(resolve, 1000));
 
+  // Initialize MockWETH with balance and approvals
+  console.log("Setting up initial WETH balances and approvals...");
+
+  // Deposit some ETH into WETH for deployer
+  const depositAmount = ethers.utils.parseEther("10.0"); // 10 WETH
+  await mockWETH.connect(deployer).deposit({ value: depositAmount });
+  console.log("Deposited initial WETH:", ethers.utils.formatEther(depositAmount));
+
   // Set initial price in oracle
   await mockPriceOracle.updatePrice(
     mockWETH.address,
     ethers.utils.parseUnits("2000", "18") // Example: 2000 USD per ETH
   );
-
-  // Add another small delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await mockPriceOracle.setInitialPrices(mockWETH.address);
+  console.log("Set initial WETH price in oracle");
 
   // Configure WETH in enhanced protocol
+  console.log("Configuring WETH in lending protocol...");
   const tokenConfigTx = await enhancedLendingProtocol.setTokenConfig(
     mockWETH.address,
     true, // isSupported
@@ -100,6 +108,14 @@ async function main() {
     500   // 5% interest rate
   );
   await tokenConfigTx.wait();
+  console.log("WETH configured in lending protocol");
+
+  // Approve WETH spending for the lending protocol
+  await mockWETH.connect(deployer).approve(
+    enhancedLendingProtocol.address,
+    ethers.constants.MaxUint256 // Infinite approval
+  );
+  console.log("Approved WETH spending for lending protocol");
 
   const integrationService = new IntegrationService(
     process.env.RPC_URL!,

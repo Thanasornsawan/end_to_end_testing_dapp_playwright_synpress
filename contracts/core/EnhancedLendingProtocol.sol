@@ -97,33 +97,57 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
     }
     
     /**
-     * @notice Update global interest index for a token
+     * @notice Update global interest index for a token with smoother accrual
      * @param token The token address
      */
     function updateGlobalInterest(address token) internal {
-        if (totalBorrows[token] == 0 || lastGlobalUpdate[token] == block.timestamp) {
+        if (totalBorrows[token] == 0) {
+            lastGlobalUpdate[token] = block.timestamp;
             return;
         }
         
         uint256 timeElapsed = block.timestamp - lastGlobalUpdate[token];
-        uint256 interestRate = tokenConfigs[token].interestRate;
+        if (timeElapsed == 0) return;
         
-        // Calculate accrued interest: (rate * timeElapsed / SECONDS_PER_YEAR)
-        uint256 interestFactor = interestRate
-            .mul(timeElapsed)
-            .div(SECONDS_PER_YEAR);
+        uint256 interestRate = tokenConfigs[token].interestRate;
+        uint256 SECONDS_PER_FIVE_MINUTES = 300;
+        
+        // Calculate full intervals
+        uint256 fullIntervals = timeElapsed / SECONDS_PER_FIVE_MINUTES;
+        
+        if (fullIntervals > 0) {
+            uint256 actualTimeElapsed = fullIntervals * SECONDS_PER_FIVE_MINUTES;
             
-        // Update global index: previousIndex * (1 + interestFactor/BASIS_POINTS)
-        uint256 currentIndex = globalInterestIndices[token];
-        if (currentIndex == 0) {
-            currentIndex = INITIAL_INTEREST_INDEX;
+            // Calculate scaled interest rate
+            uint256 scaledInterestRate = interestRate
+                .mul(actualTimeElapsed)
+                .mul(1e18)  // Scale up for precision
+                .div(SECONDS_PER_YEAR)
+                .div(100);  // Convert basis points to percentage
+            
+            // Update global index
+            uint256 currentIndex = globalInterestIndices[token];
+            if (currentIndex == 0) {
+                currentIndex = INITIAL_INTEREST_INDEX;
+            }
+            
+            uint256 newIndex = currentIndex
+                .mul(1e18 + scaledInterestRate)
+                .div(1e18);
+            
+            if (newIndex > currentIndex) {
+                globalInterestIndices[token] = newIndex;
+                
+                // Calculate actual interest accrued
+                uint256 interestAccrued = totalBorrows[token]
+                    .mul(newIndex - currentIndex)
+                    .div(currentIndex);
+                
+                emit InterestAccrued(token, address(0), interestAccrued);
+            }
         }
         
-        uint256 newIndex = currentIndex
-            .mul(BASIS_POINTS.add(interestFactor))
-            .div(BASIS_POINTS);
-            
-        globalInterestIndices[token] = newIndex;
+        // Always update timestamp
         lastGlobalUpdate[token] = block.timestamp;
     }
     
@@ -302,39 +326,48 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         updateUserInterest(token, msg.sender);
         
         UserPosition storage position = userPositions[token][msg.sender];
-        require(amount <= position.borrowAmount, "Amount too high");
+        uint256 currentBorrowWithInterest = getCurrentBorrowAmount(token, msg.sender);
+        require(amount <= currentBorrowWithInterest, "Amount too high");
 
+        // Handle WETH repayment
         if (token == address(weth)) {
-            // For WETH, we need to handle two cases:
-            
-            // Case 1: User sends ETH directly
             if (msg.value == amount) {
-                // Convert incoming ETH to WETH
+                // Case 1: User sends ETH directly
+                // Convert incoming ETH to WETH and keep it
                 weth.deposit{value: amount}();
-            } 
-            // Case 2: User sends WETH tokens directly (no ETH)
-            else if (msg.value == 0) {
-                // Transfer WETH tokens from user to contract
+            } else if (msg.value == 0) {
+                // Case 2: User sends WETH tokens directly
                 require(IERC20(token).transferFrom(msg.sender, address(this), amount), 
                     "WETH transfer failed");
-            }
-            else {
+            } else {
                 revert("Invalid payment method");
             }
         } else {
-            // For other tokens, just transfer them normally
             require(msg.value == 0, "ETH not accepted for non-WETH tokens");
             require(IERC20(token).transferFrom(msg.sender, address(this), amount), 
                 "Token transfer failed");
         }
 
-        // Update borrower's position
-        position.borrowAmount = position.borrowAmount.sub(amount);
-        totalBorrows[token] = totalBorrows[token].sub(amount);
-        
-        emit Repay(token, msg.sender, amount, 0);
-    }
+        // Calculate actual interest paid
+        uint256 interestPaid;
+        if (amount >= position.borrowAmount) {
+            interestPaid = currentBorrowWithInterest.sub(position.borrowAmount);
+        } else {
+            uint256 totalInterest = currentBorrowWithInterest.sub(position.borrowAmount);
+            interestPaid = amount.mul(totalInterest).div(currentBorrowWithInterest);
+        }
 
+        // Update state
+        totalBorrows[token] = totalBorrows[token].sub(amount);
+        position.borrowAmount = position.borrowAmount.sub(amount);
+        
+        // If this was a full repayment, reset the interest index
+        if (position.borrowAmount == 0) {
+            position.interestIndex = 0;
+        }
+        
+        emit Repay(token, msg.sender, amount, interestPaid);
+    }
     /**
      * @notice Get accumulated interest for a user's position
      * @param token The token address
@@ -366,7 +399,7 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
     }
     
     /**
-     * @notice Calculate the current global interest index
+     * @notice Calculate the current global interest index with smoother accrual
      * @param token The token address
      * @return The current global interest index
      */
@@ -384,13 +417,31 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
             uint256 timeElapsed = block.timestamp - lastGlobalUpdate[token];
             uint256 interestRate = tokenConfigs[token].interestRate;
             
-            uint256 interestFactor = interestRate
-                .mul(timeElapsed)
-                .div(SECONDS_PER_YEAR);
+            // Constants
+            uint256 SECONDS_PER_FIVE_MINUTES = 300;
+            
+            // Calculate full intervals
+            uint256 fullIntervals = timeElapsed / SECONDS_PER_FIVE_MINUTES;
+            
+            if (fullIntervals > 0) {
+                // Calculate interest for the entire elapsed time
+                uint256 actualTimeElapsed = fullIntervals * SECONDS_PER_FIVE_MINUTES;
                 
-            return currentGlobalIndex
-                .mul(BASIS_POINTS.add(interestFactor))
-                .div(BASIS_POINTS);
+                // Calculate interest rate for the period
+                // interestRate is in basis points (e.g., 500 = 5%)
+                // First, convert to percentage (divide by 100)
+                // Then calculate for the time period
+                uint256 scaledInterestRate = interestRate
+                    .mul(actualTimeElapsed)
+                    .mul(1e18)  // Scale up for precision
+                    .div(SECONDS_PER_YEAR)
+                    .div(100);  // Convert basis points to percentage
+                
+                // Calculate new index with the scaled interest
+                return currentGlobalIndex
+                    .mul(1e18 + scaledInterestRate)
+                    .div(1e18);
+            }
         }
         
         return currentGlobalIndex;
@@ -408,8 +459,15 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         returns (uint256) 
     {
         UserPosition memory position = userPositions[token][user];
-        uint256 interest = getAccumulatedInterest(token, user);
-        return position.borrowAmount.add(interest);
+        if (position.borrowAmount == 0) return 0;
+        
+        uint256 currentGlobalIndex = getCurrentGlobalIndex(token);
+        uint256 userIndex = position.interestIndex;
+        if (userIndex == 0) userIndex = INITIAL_INTEREST_INDEX;
+        
+        return position.borrowAmount
+            .mul(currentGlobalIndex)
+            .div(userIndex);
     }
 
     /**
@@ -580,6 +638,98 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         address[] memory tokens = new address[](1);
         tokens[0] = address(weth);
         return tokens;
+    }
+
+    /**
+     * @notice Get diagnostic information about interest accrual for a token
+     * @param token The token address
+     * @param user The user address (optional, use address(0) for global info)
+     * @return lastUpdate The timestamp of last interest update
+     * @return currentTime The current block timestamp
+     * @return timeElapsed Seconds elapsed since last update
+     * @return intervalsElapsed Number of full 5-minute intervals elapsed
+     * @return partialInterval Portion of current interval elapsed (in basis points)
+     * @return currentIndex The current interest index
+     * @return estimatedNewIndex The estimated new index after an update
+     */
+    function getInterestDiagnostics(address token, address user) 
+        external 
+        view 
+        returns (
+            uint256 lastUpdate,
+            uint256 currentTime,
+            uint256 timeElapsed,
+            uint256 intervalsElapsed,
+            uint256 partialInterval,
+            uint256 currentIndex,
+            uint256 estimatedNewIndex
+        ) 
+    {
+        // IMPORTANT: Always use current block timestamp
+        currentTime = block.timestamp;
+        
+        // Get user-specific last update time
+        UserPosition memory position = userPositions[token][user];
+        lastUpdate = position.lastUpdateTime;
+        
+        // Calculate time difference
+        timeElapsed = currentTime > lastUpdate ? currentTime - lastUpdate : 0;
+        
+        // Calculate 5-minute intervals
+        uint256 SECONDS_PER_FIVE_MINUTES = 300;
+        intervalsElapsed = timeElapsed / SECONDS_PER_FIVE_MINUTES;
+        
+        // Calculate partial interval (as percentage)
+        if (timeElapsed > 0) {
+            partialInterval = (timeElapsed % SECONDS_PER_FIVE_MINUTES) * 100 / SECONDS_PER_FIVE_MINUTES;
+        }
+        
+        // Get current index
+        currentIndex = position.interestIndex;
+        if (currentIndex == 0) {
+            currentIndex = INITIAL_INTEREST_INDEX;
+        }
+        
+        // Calculate estimated new index
+        estimatedNewIndex = getCurrentGlobalIndex(token);
+        
+        return (
+            lastUpdate,
+            currentTime,
+            timeElapsed,
+            intervalsElapsed,
+            partialInterval,
+            currentIndex,
+            estimatedNewIndex
+        );
+    }
+
+    function getDetailedInterestAccrual(address token, address user)
+        external
+        view 
+        returns (
+            uint256 principal,
+            uint256 currentAmount,
+            uint256 interestAccrued,
+            uint256 effectiveRate
+        )
+    {
+        UserPosition memory position = userPositions[token][user];
+        principal = position.borrowAmount;
+        
+        if (principal == 0) {
+            return (0, 0, 0, 0);
+        }
+        
+        currentAmount = getCurrentBorrowAmount(token, user);
+        interestAccrued = currentAmount > principal ? currentAmount - principal : 0;
+        
+        // Calculate effective rate as percentage (basis points)
+        if (interestAccrued > 0 && principal > 0) {
+            effectiveRate = interestAccrued * BASIS_POINTS / principal;
+        }
+        
+        return (principal, currentAmount, interestAccrued, effectiveRate);
     }
 
     receive() external payable {
