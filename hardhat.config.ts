@@ -1,4 +1,5 @@
-import { HardhatUserConfig } from "hardhat/config";
+import { HardhatUserConfig, task } from "hardhat/config";
+import { HardhatRuntimeEnvironment } from "hardhat/types";
 import "@nomiclabs/hardhat-waffle";
 import "@nomiclabs/hardhat-ethers";
 import "@typechain/hardhat";

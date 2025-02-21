@@ -15,6 +15,60 @@ interface IWETH extends Contract {
   approve(spender: string, amount: BigNumberish, overrides?: Overrides): Promise<ContractTransaction>;
 }
 
+// Add validation function
+async function validatePrice(price: number): Promise<boolean> {
+  const MIN_PRICE = 100;    // $100
+  const MAX_PRICE = 10000;  // $10,000
+  
+  if (price < MIN_PRICE || price > MAX_PRICE) {
+      console.warn(`Price $${price} is outside reasonable bounds ($${MIN_PRICE}-$${MAX_PRICE})`);
+      return false;
+  }
+  return true;
+}
+
+async function updatePriceFromCoinMarketCap(mockPriceOracle: any, wethAddress: string) {
+  try {
+      const response = await fetch('https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=ETH', {
+          headers: {
+              'X-CMC_PRO_API_KEY': process.env.COINMARKETCAP_API_KEY!,
+              'Accept': 'application/json'
+          }
+      });
+      
+      const data = await response.json();
+      
+      if (data.status?.error_code) {
+          throw new Error(`API Error: ${data.status.error_message}`);
+      }
+
+      const ethPrice = data.data.ETH.quote.USD.price;
+      console.log("Got ETH price from CoinMarketCap:", ethPrice);
+      
+      // Validate price before updating
+      if (await validatePrice(ethPrice)) {
+          // Convert price to wei format (18 decimals)
+          const priceInWei = ethers.utils.parseUnits(ethPrice.toString(), "18");
+          
+          // Update oracle with real price
+          await mockPriceOracle.updatePrice(wethAddress, priceInWei);
+          console.log(`Updated WETH price in oracle to $${ethPrice}`);
+          return true;
+      } else {
+          throw new Error("Price validation failed");
+      }
+  } catch (error) {
+      console.error('Failed to get/validate price from CoinMarketCap:', error);
+      console.log('Falling back to default price...');
+      // Fallback to a default price if API fails or validation fails
+      await mockPriceOracle.updatePrice(
+          wethAddress,
+          ethers.utils.parseUnits("2000", "18")
+      );
+      return false;
+  }
+}
+
 async function main() {
   // Get deployer account
   const [deployer] = await ethers.getSigners();
@@ -89,12 +143,19 @@ async function main() {
   await mockWETH.connect(deployer).deposit({ value: depositAmount });
   console.log("Deposited initial WETH:", ethers.utils.formatEther(depositAmount));
 
+  // Set initial price from CoinMarketCap
+  console.log("Setting initial price from CoinMarketCap...");
+  const priceUpdateSuccess = await updatePriceFromCoinMarketCap(mockPriceOracle, mockWETH.address);
+  if (!priceUpdateSuccess) {
+      console.log("Warning: Using fallback price due to API/validation failure");
+  }
   // Set initial price in oracle
-  await mockPriceOracle.updatePrice(
+  /*await mockPriceOracle.updatePrice(
     mockWETH.address,
     ethers.utils.parseUnits("2000", "18") // Example: 2000 USD per ETH
   );
   await mockPriceOracle.setInitialPrices(mockWETH.address);
+  */
   console.log("Set initial WETH price in oracle");
 
   // Configure WETH in enhanced protocol
