@@ -6,6 +6,8 @@ import { APIIntegrationManager } from "@typechain/contracts/integration/APIInteg
 import { EnhancedLendingProtocol__factory } from "@typechain/factories/contracts/core/EnhancedLendingProtocol__factory";
 import { APIIntegrationManager__factory } from "@typechain/factories/contracts/integration/APIIntegrationManager__factory";
 import { getContractAddresses, CHAIN_IDS } from '../config/contracts';
+import { MockPriceOracle } from '@typechain/contracts/mocks/MockPriceOracle';
+import { MockPriceOracle__factory } from '@typechain/factories/contracts/mocks/MockPriceOracle__factory';
 
 export async function connectWallet(): Promise<ethers.providers.Web3Provider | null> {
     try {
@@ -25,12 +27,13 @@ export async function getContracts(provider: ethers.providers.Web3Provider) {
     const signer = provider.getSigner();
     const network = await provider.getNetwork();
     const addresses = getContractAddresses(network.chainId);
-  
+
+    /*
     console.log('Contract initialization:', {
       chainId: network.chainId,
       signer: await signer.getAddress(),
       addresses
-    });
+    });*/
   
     const lendingProtocol = EnhancedLendingProtocol__factory.connect(
       addresses.enhancedLendingProtocol,
@@ -41,18 +44,26 @@ export async function getContracts(provider: ethers.providers.Web3Provider) {
       addresses.apiManager,
       signer
     );
+
+    // Add price oracle initialization
+    const priceOracleAddress = await lendingProtocol.priceOracle();
+    const priceOracle = MockPriceOracle__factory.connect(
+      priceOracleAddress,
+      signer
+    );
   
     // Basic contract verification
     const wethAddress = await lendingProtocol.weth();
     const tokenConfig = await lendingProtocol.tokenConfigs(wethAddress);
     
+    /*
     console.log('Contract verification:', {
       wethAddress,
       isSupported: tokenConfig.isSupported,
       collateralFactor: tokenConfig.collateralFactor.toString()
-    });
+    });*/
   
-    return { lendingProtocol, apiManager };
+    return { lendingProtocol, apiManager, priceOracle };
 }
 
 export function formatEther(value: ethers.BigNumber): string {

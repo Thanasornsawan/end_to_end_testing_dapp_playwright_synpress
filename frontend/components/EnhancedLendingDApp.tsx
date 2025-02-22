@@ -32,8 +32,11 @@ interface EnhancedLendingDAppProps {
 
 interface Position {
     depositAmount: string;
+    depositAmountUSD: string;
     borrowAmount: string;
+    borrowAmountUSD: string;
     interestAccrued: string;
+    interestAccruedUSD: string;
     healthFactor: string;
     lastUpdateTime: string;
     interestRate: string;
@@ -84,10 +87,7 @@ interface SuccessMessageDetails {
     const [usdcContract, setUsdcContract] = useState<MockUSDC | null>(null);
     const [lendingProtocol, setLendingProtocol] = useState<EnhancedLendingProtocol | null>(null);
     const [successMessage, setSuccessMessage] = useState<SuccessMessageState | null>(null);
-    const [totalToRepay, setTotalToRepay] = useState('0');
-    const [blockchainTotal, setBlockchainTotal] = useState('0');
-    const [isClientSideCalculation, setIsClientSideCalculation] = useState(false);
-    const [lastInterestCheckTimestamp, setLastInterestCheckTimestamp] = useState<Date>(new Date());
+    const [ethPrice, setEthPrice] = useState<string>('0');
     const [interestDiagnostics, setInterestDiagnostics] = useState<any>(null);
     const [detailedInterest, setDetailedInterest] = useState<any>(null);
     const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -110,11 +110,17 @@ interface SuccessMessageDetails {
         weth: string;
     }
     
-    const BalanceDisplay: React.FC<{ balances: Balances }> = ({ balances }) => (
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm font-medium">Available WETH: {balances.weth}</p>
-        </div>
-    );
+    const BalanceDisplay: React.FC<{ balances: Balances }> = ({ balances }) => {
+        const usdBalance = (parseFloat(balances.weth) * parseFloat(ethPrice)).toFixed(2);
+        return (
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium">
+                    Available WETH: {balances.weth} 
+                    <span className="text-gray-500 ml-2">(${usdBalance})</span>
+                </p>
+            </div>
+        );
+    };
     
     const [balances, setBalances] = useState<Balances>({ weth: '0' });
     
@@ -223,7 +229,15 @@ interface SuccessMessageDetails {
         if (!lendingProtocol || !wethAddress) return;
     
         try {
-            // Get base position data using existing contracts
+            // Get contracts including price oracle
+            const { priceOracle } = await getContracts(web3Provider);
+            
+            // Get price from oracle
+            const wethPrice = await priceOracle.getPrice(wethAddress);
+            const priceInUSD = ethers.utils.formatUnits(wethPrice, 18);
+            setEthPrice(priceInUSD);
+
+            // Rest of the function remains the same...
             const position = await lendingProtocol.userPositions(wethAddress, userAddress);
             const healthFactor = await lendingProtocol.getHealthFactor(userAddress);
             
@@ -261,14 +275,22 @@ interface SuccessMessageDetails {
                 console.log('Interest calculation not supported in contract:', err);
                 formattedBorrowAmount = formatEther(position.borrowAmount);
             }
-        
+    
+            // Calculate USD values
+            const depositAmountUSD = (parseFloat(formatEther(position.depositAmount)) * parseFloat(priceInUSD)).toFixed(2);
+            const borrowAmountUSD = (parseFloat(formattedBorrowAmount) * parseFloat(priceInUSD)).toFixed(2);
+            const interestAccruedUSD = (parseFloat(interestAccrued) * parseFloat(priceInUSD)).toFixed(2);
+    
             setPosition({
                 depositAmount: formatEther(position.depositAmount),
+                depositAmountUSD,
                 borrowAmount: formattedBorrowAmount,
-                interestAccrued: interestAccrued,
-                interestRate: interestRateDisplay,
+                borrowAmountUSD,
+                interestAccrued,
+                interestAccruedUSD,
                 healthFactor: formatEther(healthFactor),
-                lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000).toLocaleString()
+                lastUpdateTime: new Date(position.lastUpdateTime.toNumber() * 1000).toLocaleString(),
+                interestRate: interestRateDisplay
             });
         } catch (err) {
             console.error('Error loading position:', err);
@@ -287,30 +309,50 @@ interface SuccessMessageDetails {
   };
 
   const getSimplifiedErrorMessage = (error: any): string => {
-    if (typeof error === 'string') return error;
-    
-    // Check for common error messages
-    const errorString = error?.message || error?.reason || JSON.stringify(error);
-    
-    if (errorString.includes('Insufficient WETH balance')) {
-      return "Cannot borrow more than deposit amount";
-    }
-    if (errorString.includes('Cannot withdraw more than')) {
-      return "Cannot withdraw more than deposited amount";
-    }
-    if (errorString.includes('Cannot repay more than')) {
-      return "Cannot repay more than borrowed amount";
-    }
-    if (errorString.includes('Insufficient collateral')) {
-      return "Insufficient collateral for this action";
-    }
-    if (errorString.includes('Unhealthy position')) {
-      return "Position would become unhealthy after this action";
-    }
-    
-    // Default error message
-    return "Transaction failed. Please try again.";
-  };
+        if (typeof error === 'string') return error;
+        
+        // Check for common error messages
+        const errorString = error?.message || error?.reason || JSON.stringify(error);
+        const code = error?.code;
+
+        // Add MetaMask specific error cases
+        if (code === 'ACTION_REJECTED' || 
+            errorString.includes('user rejected') || 
+            errorString.includes('User denied')) {
+            return "Transaction cancelled by user";
+        }
+        
+        // Existing error cases
+        if (errorString.includes('Insufficient WETH balance')) {
+            return "Cannot borrow more than deposit amount";
+        }
+        if (errorString.includes('Cannot withdraw more than')) {
+            return "Cannot withdraw more than deposited amount";
+        }
+        if (errorString.includes('Cannot repay more than')) {
+            return "Cannot repay more than borrowed amount";
+        }
+        if (errorString.includes('Insufficient collateral')) {
+            return "Insufficient collateral for this action";
+        }
+        if (errorString.includes('Unhealthy position')) {
+            return "Position would become unhealthy after this action";
+        }
+
+        // common MetaMask errors
+        if (errorString.includes('insufficient funds')) {
+            return "Insufficient ETH for gas fees";
+        }
+        if (errorString.includes('nonce too high')) {
+            return "Transaction error: Please refresh the page and try again";
+        }
+        if (errorString.includes('gas required exceeds')) {
+            return "Transaction would fail: Gas estimation failed";
+        }
+        
+        // Default error message
+        return "Transaction failed. Please try again.";
+    };
 
   const handleDeposit = async () => {
     if (!provider || !depositAmount || !wethAddress) return;
@@ -353,22 +395,8 @@ interface SuccessMessageDetails {
       });
 
     } catch (err) {
-      console.error('Deposit failed:', err);
-      let errorMessage = 'Unknown error';
-      
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'object' && err !== null) {
-        if ('error' in err && typeof err.error === 'object' && err.error !== null && 'message' in err.error) {
-          errorMessage = String(err.error.message);
-        } else if ('reason' in err && typeof err.reason === 'string') {
-          errorMessage = err.reason;
-        } else if ('message' in err && typeof err.message === 'string') {
-          errorMessage = err.message;
-        }
-      }
-      
-      setError(`Deposit failed: ${errorMessage}`);
+        console.error('Deposit failed:', err);
+        setError(getSimplifiedErrorMessage(err));
     }
     setLoading(false);
   };
@@ -453,7 +481,6 @@ interface SuccessMessageDetails {
             setBorrowAmount('');
 
         } catch (err) {
-            console.error('Borrow failed:', err);
             logAction('BORROW_FAILED', { error: err });
             setError(getSimplifiedErrorMessage(err));
         }
@@ -732,56 +759,55 @@ interface SuccessMessageDetails {
         setLoading(false);
     };
 
-    // Add this function to fetch interest diagnostics
-const fetchInterestDiagnostics = async () => {
-    if (!provider || !account || !wethAddress) return;
-    
-    setDiagnosticsLoading(true);
-    try {
-      const { lendingProtocol } = await getContracts(provider);
-      
-      // Get interest diagnostics
-      const diagnostics = await lendingProtocol.getInterestDiagnostics(wethAddress, account);
-      
-      // Format the data for display
-      const formattedDiagnostics = {
-        lastUpdate: new Date(diagnostics.lastUpdate.toNumber() * 1000).toLocaleString(),
-        currentTime: new Date(diagnostics.currentTime.toNumber() * 1000).toLocaleString(),
-        timeElapsed: `${diagnostics.timeElapsed.toString()} seconds`,
-        intervalsElapsed: diagnostics.intervalsElapsed.toString(),
-        partialInterval: `${(parseFloat(diagnostics.partialInterval.toString()) / 100).toFixed(2)}%`,
-        currentIndex: ethers.utils.formatUnits(diagnostics.currentIndex, 18),
-        estimatedNewIndex: ethers.utils.formatUnits(diagnostics.estimatedNewIndex, 18),
-        indexChange: ethers.utils.formatUnits(
-          diagnostics.estimatedNewIndex.sub(diagnostics.currentIndex), 
-          18
-        )
-      };
-      
-      // Get detailed interest accrual
-      const interestDetails = await lendingProtocol.getDetailedInterestAccrual(wethAddress, account);
-      
-      // Format interest details
-      const formattedInterestDetails = {
-        principal: ethers.utils.formatEther(interestDetails.principal),
-        currentAmount: ethers.utils.formatEther(interestDetails.currentAmount),
-        interestAccrued: ethers.utils.formatEther(interestDetails.interestAccrued),
-        effectiveRate: `${(parseFloat(interestDetails.effectiveRate.toString()) / 100).toFixed(4)}%`
-      };
-      
-      // Update state
-      setInterestDiagnostics(formattedDiagnostics);
-      setDetailedInterest(formattedInterestDetails);
-      
-      console.log('Interest diagnostics:', formattedDiagnostics);
-      console.log('Detailed interest:', formattedInterestDetails);
-      
-    } catch (error) {
-      console.error('Failed to fetch interest diagnostics:', error);
-      setError('Failed to load interest data');
-    } finally {
-      setDiagnosticsLoading(false);
-    }
+    const fetchInterestDiagnostics = async () => {
+        if (!provider || !account || !wethAddress) return;
+        
+        setDiagnosticsLoading(true);
+        try {
+        const { lendingProtocol } = await getContracts(provider);
+        
+        // Get interest diagnostics
+        const diagnostics = await lendingProtocol.getInterestDiagnostics(wethAddress, account);
+        
+        // Format the data for display
+        const formattedDiagnostics = {
+            lastUpdate: new Date(diagnostics.lastUpdate.toNumber() * 1000).toLocaleString(),
+            currentTime: new Date(diagnostics.currentTime.toNumber() * 1000).toLocaleString(),
+            timeElapsed: `${diagnostics.timeElapsed.toString()} seconds`,
+            intervalsElapsed: diagnostics.intervalsElapsed.toString(),
+            partialInterval: `${(parseFloat(diagnostics.partialInterval.toString()) / 100).toFixed(2)}%`,
+            currentIndex: ethers.utils.formatUnits(diagnostics.currentIndex, 18),
+            estimatedNewIndex: ethers.utils.formatUnits(diagnostics.estimatedNewIndex, 18),
+            indexChange: ethers.utils.formatUnits(
+            diagnostics.estimatedNewIndex.sub(diagnostics.currentIndex), 
+            18
+            )
+        };
+        
+        // Get detailed interest accrual
+        const interestDetails = await lendingProtocol.getDetailedInterestAccrual(wethAddress, account);
+        
+        // Format interest details
+        const formattedInterestDetails = {
+            principal: ethers.utils.formatEther(interestDetails.principal),
+            currentAmount: ethers.utils.formatEther(interestDetails.currentAmount),
+            interestAccrued: ethers.utils.formatEther(interestDetails.interestAccrued),
+            effectiveRate: `${(parseFloat(interestDetails.effectiveRate.toString()) / 100).toFixed(4)}%`
+        };
+        
+        // Update state
+        setInterestDiagnostics(formattedDiagnostics);
+        setDetailedInterest(formattedInterestDetails);
+        
+        console.log('Interest diagnostics:', formattedDiagnostics);
+        console.log('Detailed interest:', formattedInterestDetails);
+        
+        } catch (error) {
+        console.error('Failed to fetch interest diagnostics:', error);
+        setError('Failed to load interest data');
+        } finally {
+        setDiagnosticsLoading(false);
+        }
   };
   
   const InterestDiagnosticsButton = () => (
@@ -921,32 +947,42 @@ const fetchInterestDiagnostics = async () => {
                 )
                 )}
       
-              {position && (
+                {position && (
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-sm">Deposit: {position.depositAmount} ETH</p>
-                    <p className="text-sm">Borrow: {position.borrowAmount} ETH</p>
-                    {parseFloat(position.interestAccrued) > 0 && (
-                      <p className="text-sm text-amber-600">
-                        Interest Accrued: {position.interestAccrued} ETH
-                      </p>
-                    )}
-                    <p className="text-xs text-gray-600 mt-1">
-                        Interest Rate: {position.interestRate} per 5-minute interval
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm">Health Factor: {position.healthFactor}</p>
-                    <Progress 
-                      value={parseFloat(position.healthFactor) * 10} 
-                      className="h-2"
-                      color={parseFloat(position.healthFactor) < 1.2 ? "red" : 
-                          parseFloat(position.healthFactor) < 1.5 ? "amber" : "green"}
-                    />
-                    <p className="text-sm mt-2">Last Update: {position.lastUpdateTime}</p>
-                  </div>
+                    <div>
+                        <p className="text-sm">
+                            Deposit: {position.depositAmount} ETH 
+                            <span className="text-gray-500 ml-2">(${position.depositAmountUSD})</span>
+                        </p>
+                        <p className="text-sm">
+                            Borrow: {position.borrowAmount} ETH
+                            <span className="text-gray-500 ml-2">(${position.borrowAmountUSD})</span>
+                        </p>
+                        {parseFloat(position.interestAccrued) > 0 && (
+                            <p className="text-sm text-amber-600">
+                                Interest Accrued: {position.interestAccrued} ETH
+                                <span className="ml-2">(${position.interestAccruedUSD})</span>
+                            </p>
+                        )}
+                        <p className="text-xs text-gray-600 mt-1">
+                            Interest Rate: {position.interestRate} per 5-minute interval
+                        </p>
+                        <p className="text-xs text-gray-600">
+                            ETH Price: ${parseFloat(ethPrice).toFixed(2)}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-sm">Health Factor: {position.healthFactor}</p>
+                        <Progress 
+                            value={parseFloat(position.healthFactor) * 10} 
+                            className="h-2"
+                            color={parseFloat(position.healthFactor) < 1.2 ? "red" : 
+                                parseFloat(position.healthFactor) < 1.5 ? "amber" : "green"}
+                        />
+                        <p className="text-sm mt-2">Last Update: {position.lastUpdateTime}</p>
+                    </div>
                 </div>
-              )}
+            )}
       
               <Tabs defaultValue="deposit" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
@@ -1029,18 +1065,6 @@ const fetchInterestDiagnostics = async () => {
       
                     {position && parseFloat(position.borrowAmount) > 0 && (
                         <div className="space-y-4">
-                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                            <h3 className="font-medium text-blue-800 mb-2">Current Loan Status</h3>
-                            <p className="text-sm">Principal: {position.borrowAmount} ETH</p>
-                            {parseFloat(position.interestAccrued) > 0 && (
-                                <p className="text-sm">Interest: {position.interestAccrued} ETH</p>
-                            )}
-                            <p className="text-sm mt-1">
-                                Interest rate: {position.interestRate} per 5-minute interval
-                            </p>
-                            <p className="text-xs text-gray-500 mt-2">Last updated: {position.lastUpdateTime}</p>
-                            </div>
-                            
                             <div className="flex flex-col space-y-2">
                             <Button 
                                 onClick={handleFullRepayment}
