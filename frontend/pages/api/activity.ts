@@ -187,6 +187,43 @@ async function safeDecimal(value: string | number): Promise<Prisma.Decimal> {
     }
 }
 
+async function getGasMetrics(
+    provider: ethers.providers.Provider,
+    txHash: string
+): Promise<{
+    gasUsed: ethers.BigNumber;
+    gasPrice: ethers.BigNumber;
+    totalGasCost: ethers.BigNumber;
+    baseFee: ethers.BigNumber;
+    blockTime: Date;
+}> {
+    try {
+        // Get transaction receipt for actual gas used
+        const receipt = await provider.getTransactionReceipt(txHash);
+        // Get transaction for gas price and limit
+        const tx = await provider.getTransaction(txHash);
+        // Get block for timestamp and base fee
+        const block = await provider.getBlock(receipt.blockNumber);
+
+        const gasUsed = receipt.gasUsed;
+        const gasPrice = tx.gasPrice || ethers.BigNumber.from(0);
+        const totalGasCost = gasUsed.mul(gasPrice);
+        const baseFee = block.baseFeePerGas || ethers.BigNumber.from(0);
+        const blockTime = new Date(block.timestamp * 1000);
+
+        return {
+            gasUsed,
+            gasPrice,
+            totalGasCost,
+            baseFee,
+            blockTime
+        };
+    } catch (error) {
+        console.error('Error getting gas metrics:', error);
+        throw error;
+    }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {
         return res.status(405).json({ message: 'Method not allowed' });
@@ -348,6 +385,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     });
 
                     // 7. Create Event record
+                    const gasMetrics = await getGasMetrics(provider, data.txHash);
+
                     const event = await tx.event.create({
                         data: {
                             id: data.txHash,
@@ -359,7 +398,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                             data: {
                                 user: user.id,
                                 amount: data.amount,
-                                token: data.token
+                                token: data.token,
+                                
+                                gasMetrics: {
+                                    gasUsed: gasMetrics.gasUsed.toString(),
+                                    gasPrice: gasMetrics.gasPrice.toString(),
+                                    totalGasCost: gasMetrics.totalGasCost.toString(),
+                                    baseFee: gasMetrics.baseFee.toString(),
+                                    blockTime: gasMetrics.blockTime.toISOString()
+                                }
                             },
                             status: 'PROCESSED',
                             processed: true,
@@ -395,6 +442,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 });
 
                 return res.status(200).json({ market });
+            }
+
+            case 'FAILED_TRANSACTION': {
+                // Generate a unique ID for failed transactions
+                const failedTxId = `failed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
+                const result = await prisma.$transaction(async (tx) => {
+                    // Ensure user exists
+                    const user = await tx.user.upsert({
+                        where: { id: data.userId },
+                        create: {
+                            id: data.userId,
+                            address: data.userId
+                        },
+                        update: {}
+                    });
+
+                    // Create event for failed transaction
+                    const event = await tx.event.create({
+                        data: {
+                            id: failedTxId,
+                            marketId: 'default', // Use default market for failed transactions
+                            eventType: data.activityType,
+                            txHash: failedTxId, // Use generated ID as txHash
+                            blockNumber: 0,
+                            timestamp: new Date(),
+                            data: {
+                                user: data.userId,
+                                amount: data.amount,
+                                error: data.error,
+                                token: data.token
+                            },
+                            status: 'FAILED',
+                            processed: true,
+                            processedAt: new Date(),
+                            error: data.error
+                        }
+                    });
+
+                    // Create user activity record
+                    const activity = await tx.userActivity.create({
+                        data: {
+                            userId: user.id,
+                            activityType: `${data.activityType}_FAILED`,
+                            amount: data.amount,
+                            timestamp: new Date(),
+                            txHash: failedTxId,
+                            blockNumber: 0
+                        }
+                    });
+
+                    return { event, activity };
+                });
+
+                return res.status(200).json(result);
             }
 
             default:

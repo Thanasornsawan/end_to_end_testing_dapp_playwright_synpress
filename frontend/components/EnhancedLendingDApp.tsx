@@ -28,6 +28,12 @@ interface EnhancedLendingDAppProps {
     account: string;
     provider: ethers.providers.Web3Provider | null;
     onConnect: () => Promise<void>;
+    onTransactionError: (data: {
+        type: string;
+        amount: string;
+        error: string;
+        token: string;
+    }) => void;
 }
 
 interface Position {
@@ -71,7 +77,8 @@ interface SuccessMessageDetails {
   const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({ 
     account, 
     provider, 
-    onConnect 
+    onConnect,
+    onTransactionError
   }) => {
     const [chainId, setChainId] = useState<number>();
     const [depositAmount, setDepositAmount] = useState('');
@@ -338,6 +345,9 @@ interface SuccessMessageDetails {
         if (errorString.includes('Unhealthy position')) {
             return "Position would become unhealthy after this action";
         }
+        if (errorString.includes('Cannot borrow more than')) {
+            return errorString;
+        }
 
         // common MetaMask errors
         if (errorString.includes('insufficient funds')) {
@@ -454,14 +464,30 @@ interface SuccessMessageDetails {
                 currentBorrow: ethers.utils.formatEther(position.borrowAmount)
             });
 
-            // Clear user feedback
+            // Validation checks
             if (parseFloat(depositedAmount) === 0) {
-                throw new Error("You need to deposit collateral first before borrowing");
+                const error = "You need to deposit collateral first before borrowing";
+                // Emit error to parent instead of direct logging
+                onTransactionError({
+                    type: 'BORROW',
+                    amount: borrowAmount,
+                    error,
+                    token: wethAddress
+                });
+                throw new Error(error);
             }
 
             const maxBorrowAmount = parseFloat(depositedAmount) * 0.75; // 75% collateral factor
             if (parseFloat(borrowAmount) > maxBorrowAmount) {
-                throw new Error(`Cannot borrow more than ${maxBorrowAmount.toFixed(4)} ETH (75% of your ${depositedAmount} ETH deposit)`);
+                const error = `Cannot borrow more than ${maxBorrowAmount.toFixed(4)} ETH (75% of your ${depositedAmount} ETH deposit)`;
+                // Emit error to parent instead of direct logging
+                onTransactionError({
+                    type: 'BORROW',
+                    amount: borrowAmount,
+                    error,
+                    token: wethAddress
+                });
+                throw new Error(error);
             }
 
             const tx = await lendingProtocol.borrow(
@@ -481,8 +507,9 @@ interface SuccessMessageDetails {
             setBorrowAmount('');
 
         } catch (err) {
+            const errorMessage = getSimplifiedErrorMessage(err);
             logAction('BORROW_FAILED', { error: err });
-            setError(getSimplifiedErrorMessage(err));
+            setError(errorMessage);
         }
         setLoading(false);
     };

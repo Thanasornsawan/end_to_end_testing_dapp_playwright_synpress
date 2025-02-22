@@ -6,7 +6,7 @@ import RiskMonitor from '../components/RiskMonitor';
 import { Card } from "../components/ui/card";
 import { connectWallet, getContracts } from '../utils/web3';
 import { APIIntegrationManager } from "../../typechain/contracts/integration/APIIntegrationManager";
-import { updateMarketData, logUserActivity } from '../../services/database';
+import { updateMarketData, logUserActivity, logFailedTransaction } from '../../services/database';
 
 // Keep track of last processed block outside component to persist across re-renders
 let lastProcessedBlock = 0;
@@ -206,6 +206,28 @@ export default function Home() {
     };
   }, [apiManager, provider]);
 
+  const handleTransactionError = async (data: {
+    type: string;
+    amount: string;
+    error: string;
+    token: string;
+  }) => {
+    if (!account) return;
+    
+    try {
+      await logFailedTransaction(
+        account,
+        data.type,
+        data.amount,
+        data.error,
+        data.token
+      );
+      console.log('Failed transaction logged:', data);
+    } catch (error) {
+      console.error('Error logging failed transaction:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
@@ -217,6 +239,7 @@ export default function Home() {
               account={account}
               provider={provider}
               onConnect={handleWalletConnection}
+              onTransactionError={handleTransactionError}
             />
           </div>
 

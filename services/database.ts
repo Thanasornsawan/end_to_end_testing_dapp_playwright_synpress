@@ -82,3 +82,38 @@ export const logUserActivity = async (
       throw error;
     }
   };
+
+export const logFailedTransaction = async (
+    userId: string,
+    activityType: string,
+    amount: string,
+    error: string,
+    token: string
+  ): Promise<void> => {
+    try {
+      const response = await fetch('/api/activity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'FAILED_TRANSACTION',
+          data: {
+            userId,
+            activityType,
+            amount,
+            timestamp: new Date().toISOString(),
+            error,
+            token,
+            status: 'FAILED'
+          }
+        })
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to log failed transaction');
+      }
+    } catch (error) {
+      console.error('Error logging failed transaction:', error);
+    }
+  };

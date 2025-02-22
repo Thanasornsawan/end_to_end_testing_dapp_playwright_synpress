@@ -69,8 +69,8 @@ model Position {
   depositAmount   Decimal
   borrowAmount    Decimal
   lastUpdate      DateTime
-  healthFactor    Decimal @db.Decimal(10,2)
-  liquidationRisk Decimal @db.Decimal(10,2)
+  healthFactor    Decimal  @db.Decimal(10, 2)
+  liquidationRisk Decimal  @db.Decimal(10, 2)
   collateralValue Decimal
   interestRate    Decimal
   status          String
