@@ -12,3 +12,11 @@ coverage.json
 /ctrf/
 /frontend/.next/
 trace
+
+# Playwright
+/web3_test/test-results/
+/web3_test/playwright-report/
+/web3_test/blob-report/
+/web3_test/playwright/.cache/
+/web3_test/.cache-synpress
+/web3_test/screenshots

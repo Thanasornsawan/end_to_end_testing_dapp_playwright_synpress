@@ -1,0 +1,19 @@
+{
+  "name": "web3_test",
+  "version": "1.0.0",
+  "description": "E2E tests for DeFi dApp",
+  "scripts": {
+    "test:e2e": "PWDEBUG=1 synpress run tests/e2e/lending.spec.ts",
+    "test:e2e:headed": "PWDEBUG=1 synpress run tests/e2e/lending.spec.ts --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@synthetixio/synpress": "^4.0.4",
+    "@types/node": "^22.13.5",
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "@types/sharp": "^0.31.1",
+    "sharp": "^0.33.5"
+  }
+}
