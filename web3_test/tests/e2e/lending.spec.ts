@@ -6,8 +6,7 @@ import { BorrowFeature } from '../../features/borrow.feature';
 import { RepayFeature } from '../../features/repay.feature';
 import { WithdrawFeature } from '../../features/withdraw.feature';
 import { WalletFeature } from '../../features/wallet.feature';
-import LendingPage from '../../pages/lending.page';
-import basicSetup from '../../run/metamask.setup';
+import basicSetup from '../../wallet-setup/metamask.setup';
 
 const test = testWithSynpress(metaMaskFixtures(basicSetup));
 let metamask: MetaMask;
@@ -19,7 +18,6 @@ test.describe('Lending Test', () => {
     let repayFeature: RepayFeature;
     let withdrawFeature: WithdrawFeature;
     let walletFeature: WalletFeature;
-    let lendingPage: LendingPage;
 
     test.beforeEach(async ({ page, context, metamaskPage, extensionId }, testInfo) => {
         // Initialize helpers and features
@@ -31,8 +29,7 @@ test.describe('Lending Test', () => {
         borrowFeature = new BorrowFeature(page, context, metamask, testInfo);
         repayFeature = new RepayFeature(page, context, metamask, testInfo);
         withdrawFeature = new WithdrawFeature(page, context, metamask, testInfo);
-        walletFeature = new WalletFeature(page, context, metamask, testInfo);
-        lendingPage = new LendingPage(page, new MetaMask(context, metamaskPage, basicSetup.walletPassword, extensionId));
+        walletFeature = new WalletFeature(page, metamask);
 
         // Clear screenshots
         await screenshotHelper.clearScreenshots();

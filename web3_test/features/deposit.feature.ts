@@ -1,5 +1,4 @@
-import { Page, test } from "@playwright/test";
-import { TestInfo } from '@playwright/test';
+import { type Page, type TestInfo, test } from "@playwright/test";
 import { MetaMask } from '@synthetixio/synpress/playwright';
 import { ScreenshotHelper } from '../helpers/screenshot.helper';
 import LendingPage  from '../pages/lending.page';
@@ -14,7 +13,7 @@ export class DepositFeature {
         private readonly metamask: MetaMask,
         private readonly testInfo: TestInfo
     ) {
-        this.lendingPage = new LendingPage(page, metamask);
+        this.lendingPage = new LendingPage(this.page, this.metamask);
         this.screenshotHelper = new ScreenshotHelper();
     }
 

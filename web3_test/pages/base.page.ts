@@ -1,5 +1,5 @@
 // pages/base.page.ts
-import { Page, Locator } from "@playwright/test";
+import { type Page } from "@playwright/test";
 import { MetaMask } from "@synthetixio/synpress/playwright";
 
 export default class BasePage {

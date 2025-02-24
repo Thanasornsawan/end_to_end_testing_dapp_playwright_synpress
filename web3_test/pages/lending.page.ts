@@ -1,5 +1,5 @@
 // pages/lending.page.ts
-import { Page, Locator } from "@playwright/test";
+import { type Page, type Locator } from "@playwright/test";
 import { MetaMask } from "@synthetixio/synpress/playwright";
 import { TestData } from '../config/test-data.config';
 import BasePage from "./base.page";
@@ -147,17 +147,18 @@ export default class LendingPage extends BasePage {
     await this.page.getByText(TestData.MESSAGES.AMOUNTS.formatDeposit(0.0)).waitFor({ state: 'visible' });
   }
 
-  // Helper methods
   async getCurrentDeposit(): Promise<number> {
     const depositText = await this.page.getByText(TestData.SELECTORS.LABELS.DEPOSIT).textContent();
     if (!depositText) return 0;
-    try {
-      return parseFloat(depositText.split('ETH')[0].split(':')[1].trim());
-    } catch (error) {
-      console.error('Error parsing deposit amount:', error);
-      return 0;
+    
+        try {
+            const amount = parseFloat(depositText.split('ETH')[0]?.split(':')[1]?.trim() ?? '0');
+            return isNaN(amount) ? 0 : amount;
+        } catch (error) {
+            console.error('Error parsing deposit amount:', error);
+            return 0;
+        }
     }
-  }
 
   async waitForPositiveInterest(maxAttempts: number = 10): Promise<number> {
     let interestAmount = 0;

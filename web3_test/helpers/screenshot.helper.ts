@@ -1,5 +1,5 @@
 // helpers/screenshot.helper.ts
-import { Page } from '@playwright/test'; 
+import { type Page } from "@playwright/test";
 import sharp from 'sharp';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -2,13 +2,18 @@
   "name": "web3_test",
   "version": "1.0.0",
   "description": "E2E tests for DeFi dApp",
+  "author": "Thanasornsawan",
+  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test:e2e": "PWDEBUG=1 synpress run tests/e2e/lending.spec.ts",
-    "test:e2e:headed": "PWDEBUG=1 synpress run tests/e2e/lending.spec.ts --headed"
+    "test:playwright:headful": "npx playwright test",
+    "test:playwright:headless": "HEADLESS=true npx playwright test",
+    "test:playwright:headless:ui": "HEADLESS=true npx playwright test --ui"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "@synthetixio/synpress": "^4.0.4",
+    "@synthetixio/synpress-tsconfig": "^0.0.7",
     "@types/node": "^22.13.5",
     "typescript": "^5.0.4"
   },
