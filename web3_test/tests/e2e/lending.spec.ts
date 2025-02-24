@@ -1,6 +1,5 @@
 import { testWithSynpress } from '@synthetixio/synpress';
 import { MetaMask, metaMaskFixtures } from '@synthetixio/synpress/playwright';
-import { BlockchainHelper } from '../../helpers/blockchain.helper';
 import { ScreenshotHelper } from '../../helpers/screenshot.helper';
 import { DepositFeature } from '../../features/deposit.feature';
 import { BorrowFeature } from '../../features/borrow.feature';
@@ -11,11 +10,9 @@ import LendingPage from '../../pages/lending.page';
 import basicSetup from '../../run/metamask.setup';
 
 const test = testWithSynpress(metaMaskFixtures(basicSetup));
-const { expect } = test;
 let metamask: MetaMask;
 
 test.describe('Lending Test', () => {
-    let blockchainHelper: BlockchainHelper;
     let screenshotHelper: ScreenshotHelper;
     let depositFeature: DepositFeature;
     let borrowFeature: BorrowFeature;
@@ -26,7 +23,6 @@ test.describe('Lending Test', () => {
 
     test.beforeEach(async ({ page, context, metamaskPage, extensionId }, testInfo) => {
         // Initialize helpers and features
-        blockchainHelper = new BlockchainHelper();
         screenshotHelper = new ScreenshotHelper();
         
         metamask = new MetaMask(context, metamaskPage, basicSetup.walletPassword, extensionId);
@@ -50,16 +46,7 @@ test.describe('Lending Test', () => {
 
         // Borrow
         await borrowFeature.borrowETH('0.5');
-
-        // Wait for interest
-        console.log('Advancing time by 5 minutes...');
-        await blockchainHelper.advanceTime(300);
-
-        // Check for interest accumulation with a single call
-        await test.step('wait interest after 5 min. interval', async () => {
-            const interestAmount = await lendingPage.waitForPositiveInterest();
-            expect(interestAmount).toBeGreaterThan(0);
-        }, { box: true });
+        await borrowFeature.verifyInterestAccumulation(5, 'minutes');
 
         // Repay
         await repayFeature.repayFullAmount();
