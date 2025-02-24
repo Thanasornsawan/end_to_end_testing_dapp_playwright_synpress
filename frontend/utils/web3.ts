@@ -27,13 +27,6 @@ export async function getContracts(provider: ethers.providers.Web3Provider) {
     const signer = provider.getSigner();
     const network = await provider.getNetwork();
     const addresses = getContractAddresses(network.chainId);
-
-    /*
-    console.log('Contract initialization:', {
-      chainId: network.chainId,
-      signer: await signer.getAddress(),
-      addresses
-    });*/
   
     const lendingProtocol = EnhancedLendingProtocol__factory.connect(
       addresses.enhancedLendingProtocol,
@@ -55,13 +48,6 @@ export async function getContracts(provider: ethers.providers.Web3Provider) {
     // Basic contract verification
     const wethAddress = await lendingProtocol.weth();
     const tokenConfig = await lendingProtocol.tokenConfigs(wethAddress);
-    
-    /*
-    console.log('Contract verification:', {
-      wethAddress,
-      isSupported: tokenConfig.isSupported,
-      collateralFactor: tokenConfig.collateralFactor.toString()
-    });*/
   
     return { lendingProtocol, apiManager, priceOracle };
 }

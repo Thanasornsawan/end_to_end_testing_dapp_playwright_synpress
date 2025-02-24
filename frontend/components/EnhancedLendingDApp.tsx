@@ -255,7 +255,11 @@ interface SuccessMessageDetails {
             let interestRateDisplay = 'N/A';
             
             if (tokenConfig.interestRate.toString()) {
+                // Get the annual rate in percentage (rate is stored in basis points: 500 = 5%)
                 const yearlyRatePercentage = parseFloat(tokenConfig.interestRate.toString()) / 100;
+                // Calculate the 5-minute rate from the annual rate
+                // Minutes in year = 365 * 24 * 60 = 525,600
+                // 5-minute intervals in year = 525,600 / 5 = 105,120
                 const fiveMinuteRate = (yearlyRatePercentage / 105120).toFixed(6);
                 interestRateDisplay = `${fiveMinuteRate}%`;
             }

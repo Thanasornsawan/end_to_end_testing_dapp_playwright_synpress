@@ -1,6 +1,6 @@
 # E2E_blockchain_testing
 
-## Topic Dapp Web3 testing (Defi) with Synpress V4 and Playwright
+## Topic DApp Web3 testing (Defi) with Synpress V4 and Playwright
 
 Command to setup Metamask wallet:
 ```sh
