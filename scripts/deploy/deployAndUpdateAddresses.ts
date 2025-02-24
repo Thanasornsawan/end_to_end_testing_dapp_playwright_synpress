@@ -70,9 +70,10 @@ async function updatePriceFromCoinMarketCap(mockPriceOracle: any, wethAddress: s
 }
 
 async function main() {
-  // Get deployer account
-  const [deployer] = await ethers.getSigners();
+  // Get deployer and liquidator accounts
+  const [deployer, liquidator] = await ethers.getSigners();
   console.log("Deploying contracts with account:", deployer.address);
+  console.log("Liquidator account:", liquidator.address);
   console.log("Account balance:", ethers.utils.formatEther(await deployer.getBalance()));
 
   // Get current gas settings
@@ -138,10 +139,17 @@ async function main() {
   // Initialize MockWETH with balance and approvals
   console.log("Setting up initial WETH balances and approvals...");
 
-  // Deposit some ETH into WETH for deployer
-  const depositAmount = ethers.utils.parseEther("10.0"); // 10 WETH
-  await mockWETH.connect(deployer).deposit({ value: depositAmount });
-  console.log("Deposited initial WETH:", ethers.utils.formatEther(depositAmount));
+  // Deposit ETH into WETH for both deployer and liquidator
+  const deployerDepositAmount = ethers.utils.parseEther("10.0"); // 10 WETH for deployer
+  const liquidatorDepositAmount = ethers.utils.parseEther("5.0"); // 5 WETH for liquidator
+
+  // Deposit for deployer
+  await mockWETH.connect(deployer).deposit({ value: deployerDepositAmount });
+  console.log("Deposited initial WETH for deployer:", ethers.utils.formatEther(deployerDepositAmount));
+
+  // Deposit for liquidator
+  await mockWETH.connect(liquidator).deposit({ value: liquidatorDepositAmount });
+  console.log("Deposited initial WETH for liquidator:", ethers.utils.formatEther(liquidatorDepositAmount));
 
   // Set initial price from CoinMarketCap
   console.log("Setting initial price from CoinMarketCap...");
@@ -149,13 +157,6 @@ async function main() {
   if (!priceUpdateSuccess) {
       console.log("Warning: Using fallback price due to API/validation failure");
   }
-  // Set initial price in oracle
-  /*await mockPriceOracle.updatePrice(
-    mockWETH.address,
-    ethers.utils.parseUnits("2000", "18") // Example: 2000 USD per ETH
-  );
-  await mockPriceOracle.setInitialPrices(mockWETH.address);
-  */
   console.log("Set initial WETH price in oracle");
 
   // Configure WETH in enhanced protocol
@@ -165,18 +166,27 @@ async function main() {
     true, // isSupported
     7500, // 75% collateral factor
     8000, // 80% liquidation threshold
-    1000, // 10% liquidation penalty
+    1000, // 10% liquidation penalty <-- This is the bonus percentage
     500   // 5% interest rate
   );
   await tokenConfigTx.wait();
   console.log("WETH configured in lending protocol");
 
-  // Approve WETH spending for the lending protocol
+  // Approve WETH spending for both accounts
   await mockWETH.connect(deployer).approve(
     enhancedLendingProtocol.address,
-    ethers.constants.MaxUint256 // Infinite approval
+    ethers.constants.MaxUint256
   );
-  console.log("Approved WETH spending for lending protocol");
+  await mockWETH.connect(liquidator).approve(
+    enhancedLendingProtocol.address,
+    ethers.constants.MaxUint256
+  );
+  console.log("Approved WETH spending for both accounts");
+
+  // Grant liquidator role to second account
+  const LIQUIDATOR_ROLE = await enhancedLendingProtocol.LIQUIDATOR_ROLE();
+  await enhancedLendingProtocol.grantRole(LIQUIDATOR_ROLE, liquidator.address);
+  console.log("Granted liquidator role to:", liquidator.address);
 
   const integrationService = new IntegrationService(
     process.env.RPC_URL!,

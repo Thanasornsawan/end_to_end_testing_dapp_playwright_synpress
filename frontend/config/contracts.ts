@@ -1,5 +1,5 @@
 // THIS FILE IS AUTO-GENERATED. DO NOT EDIT DIRECTLY.
-// Last updated: 2025-02-23T07:18:55.918Z
+// Last updated: 2025-02-24T11:28:03.471Z
 // Network updated: local
 
 export const CONTRACT_ADDRESSES = {
@@ -10,7 +10,7 @@ export const CONTRACT_ADDRESSES = {
     "enhancedLendingProtocol": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
     "priceOracle": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
     "apiManager": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
-    "stakingPool": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788"
+    "stakingPool": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e"
   },
   "mainnet": {
     "weth": "0xC070A317F23E9A4e982e356485416251dd3Ed944",

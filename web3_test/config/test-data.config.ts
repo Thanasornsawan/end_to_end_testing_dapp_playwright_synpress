@@ -4,6 +4,7 @@ export const TestData = {
         REPAYMENT: {
             SUCCESS: 'Full repayment successful'
         },
+        LIQUIDATION_WARNING: 'Position At Risk of Liquidation',
         AMOUNTS: {
             ZERO_ETH: '0.0 ETH',
             formatNumber: (num: number): string => {
@@ -47,6 +48,14 @@ export const TestData = {
         LABELS: {
             DEPOSIT: 'Deposit:',
             INTEREST_ACCURED: 'Interest Accrued:',
+            HEALTH_FACTOR: 'Health Factor',
+            LIQUIDATION_RISK: 'Liquidation Risk',
+            COLLATERAL_VALUE: 'Collateral Value',
+            HEALTH_STATUS: {
+                SAFE: 'Safe',
+                WARNING: 'Warning',
+                DANGER: 'Danger'
+            }
         }
     },
     TIMEOUTS: {
