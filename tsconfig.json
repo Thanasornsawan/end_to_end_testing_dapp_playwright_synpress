@@ -37,7 +37,6 @@
       "./test",
       "./typechain",
       "./frontend/",
-      "next-env.d.ts"
-, "web3_test/tests/e2e/lending.spec.ts", "web3_test/synpress.ts"    ],
+      "next-env.d.ts"],
     "exclude": ["node_modules"]
   }  

@@ -49,8 +49,6 @@ export default class LendingPage extends BasePage {
     this.showInterestDetailsButton = page.getByTestId('show-interest-details-button');
     this.refreshInterestDataButton = page.getByTestId('refresh-interest-data-button');
     this.interestAccruedValue = page.getByTestId('interest-accrued-value');
-    
-    // Initialize new selectors for liquidation with data-testid
     this.liquidateTab = page.getByTestId('liquidate-tab');
     this.liquidatablePositionsList = page.getByTestId('liquidatable-position');
     this.ownLiquidatablePosition = page.getByTestId('own-liquidatable-position');
@@ -232,7 +230,7 @@ export default class LendingPage extends BasePage {
             
             // Click refresh interest data button
             await this.refreshInterestDataButton.click();
-            await this.waitForTimeout(TestData.TIMEOUTS.MEDIUM); // Give it a bit more time to refresh
+            await this.waitForTimeout(TestData.TIMEOUTS.MEDIUM);
             
             // Get interest amount
             interestAmount = await this.getInterestAmount();
