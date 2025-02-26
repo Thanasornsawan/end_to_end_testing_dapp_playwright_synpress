@@ -84,6 +84,10 @@ contract APIIntegrationManager is AccessControl, Pausable {
         _setupRole(DATA_VALIDATOR_ROLE, msg.sender);
     }
 
+    function getLiquidationHealthFactor(address user) external view returns (uint256) {
+        return lendingProtocol.getLiquidationHealthFactor(user);
+    }
+
     function weth() external view returns (address) {
         return address(lendingProtocol.weth());
     }

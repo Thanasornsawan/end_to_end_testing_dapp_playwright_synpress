@@ -543,13 +543,15 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         updateGlobalInterest(token);
         updateUserInterest(token, borrower);
         
-        require(getHealthFactor(borrower) < BASIS_POINTS, "Position not liquidatable");
+        // Use getLiquidationHealthFactor instead of getHealthFactor
+        require(getLiquidationHealthFactor(borrower) < BASIS_POINTS, "Position not liquidatable");
         
+        // Rest of the function remains the same...
         UserPosition storage position = userPositions[token][borrower];
         uint256 maxLiquidation = position.borrowAmount.mul(LIQUIDATION_CLOSE_FACTOR).div(BASIS_POINTS);
         require(amount <= maxLiquidation, "Amount too high");
 
-        // Calculate collateral to seize using a helper function to avoid stack too deep
+        // Calculate collateral to seize
         uint256 collateralToSeize = calculateCollateralToSeize(token, amount);
 
         // Transfer tokens
@@ -730,6 +732,39 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         }
         
         return (principal, currentAmount, interestAccrued, effectiveRate);
+    }
+
+    function getLiquidationHealthFactor(address user) public view returns (uint256) {
+        address[] memory supportedTokens = getSupportedTokens();
+        
+        uint256 totalCollateralValue = 0;
+        uint256 totalBorrowValue = 0;
+
+        // Similar to calculatePositionValues but using liquidationThreshold
+        for (uint i = 0; i < supportedTokens.length; i++) {
+            address token = supportedTokens[i];
+            UserPosition memory position = userPositions[token][user];
+            uint256 tokenPrice = priceOracle.getPrice(token);
+            
+            // Calculate collateral value using liquidationThreshold instead of collateralFactor
+            if (position.depositAmount > 0) {
+                uint256 collateralValue = position.depositAmount
+                    .mul(tokenPrice)
+                    .mul(tokenConfigs[token].liquidationThreshold)
+                    .div(BASIS_POINTS);
+                totalCollateralValue = totalCollateralValue.add(collateralValue);
+            }
+
+            // Calculate borrow value with interest
+            if (position.borrowAmount > 0) {
+                uint256 currentBorrowAmount = getCurrentBorrowAmount(token, user);
+                uint256 borrowValue = currentBorrowAmount.mul(tokenPrice);
+                totalBorrowValue = totalBorrowValue.add(borrowValue);
+            }
+        }
+
+        if (totalBorrowValue == 0) return type(uint256).max;
+        return totalCollateralValue.mul(BASIS_POINTS).div(totalBorrowValue);
     }
 
     receive() external payable {

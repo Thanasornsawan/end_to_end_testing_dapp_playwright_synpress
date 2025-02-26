@@ -9,6 +9,7 @@ import { ethers } from 'ethers';
 interface RiskMetrics {
   healthFactor: string;
   liquidationRisk: string;
+  liquidationHealthFactor: string;
   safetyRating: 'High' | 'Medium' | 'Low';
 }
 
@@ -37,25 +38,29 @@ const RiskMonitor = ({
     setLoading(true);
     try {
       const healthFactor = await apiManager.getHealthFactor(userAddress);
+      // Also get the liquidation health factor
+      const liquidationHealthFactor = await apiManager.getLiquidationHealthFactor(userAddress);
+      
       const wethAddress = await apiManager.weth();
       const position = await apiManager.userPositions(wethAddress, userAddress);
   
       const healthFactorNumber = parseFloat(ethers.utils.formatUnits(healthFactor, 4));
+      const liquidationHealthFactorNumber = parseFloat(ethers.utils.formatUnits(liquidationHealthFactor, 4));
       
-      // Calculate liquidation risk using the same formula as the API
+      // Use liquidation health factor when calculating liquidation risk
       let liquidationRiskValue = '0';
-      if (healthFactorNumber > 1000000) {
+      if (liquidationHealthFactorNumber > 1000000) {
         liquidationRiskValue = '0';
-      } else if (healthFactorNumber < 0.01) {
+      } else if (liquidationHealthFactorNumber < 0.01) {
         liquidationRiskValue = '100';
       } else {
-        liquidationRiskValue = Math.min(100, (100 / healthFactorNumber)).toFixed(2);
+        liquidationRiskValue = Math.min(100, (100 / liquidationHealthFactorNumber)).toFixed(2);
       }
   
       let safetyRating: 'High' | 'Medium' | 'Low';
-      if (healthFactorNumber >= 2) {
+      if (liquidationHealthFactorNumber >= 2) {
         safetyRating = 'High';
-      } else if (healthFactorNumber >= 1.5) {
+      } else if (liquidationHealthFactorNumber >= 1.5) {
         safetyRating = 'Medium';
       } else {
         safetyRating = 'Low';
@@ -63,6 +68,7 @@ const RiskMonitor = ({
   
       setRiskMetrics({
         healthFactor: healthFactorNumber.toFixed(2),
+        liquidationHealthFactor: liquidationHealthFactorNumber.toFixed(2),
         liquidationRisk: liquidationRiskValue,
         safetyRating
       });
@@ -72,7 +78,7 @@ const RiskMonitor = ({
     } finally {
       setLoading(false);
     }
-};  
+  }; 
 
   const getSafetyColor = (rating: 'High' | 'Medium' | 'Low') => {
     switch (rating) {
@@ -115,12 +121,12 @@ const RiskMonitor = ({
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm">Health Factor</span>
-                <span className={getHealthFactorColor(parseFloat(riskMetrics.healthFactor))}>
-                  {riskMetrics.healthFactor}
+                <span className={getHealthFactorColor(parseFloat(riskMetrics.liquidationHealthFactor))}>
+                  {riskMetrics.liquidationHealthFactor}
                 </span>
               </div>
               <Progress 
-                value={parseFloat(riskMetrics.healthFactor) * 33.33}
+                value={parseFloat(riskMetrics.liquidationHealthFactor) * 33.33}
                 className="h-2"
               />
             </div>
