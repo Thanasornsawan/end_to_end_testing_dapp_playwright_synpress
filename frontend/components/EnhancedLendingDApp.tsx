@@ -13,6 +13,7 @@ import {
     getContracts, 
     formatEther, 
     parseEther,
+    disconnectWallet,
     getErrorMessage 
   } from '../utils/web3';
 import { getContractAddresses } from '../config/contracts';
@@ -353,12 +354,17 @@ interface SuccessMessageDetails {
   const handleConnect = async () => {
     try {
       setError('');
+      // If already connected, attempt to disconnect first
+      if (account) {
+        await disconnectWallet();
+      }
+      
       await onConnect();
     } catch (err) {
       console.error('Connection failed:', err);
       setError('Failed to connect wallet');
     }
-  };
+  }
 
   const getSimplifiedErrorMessage = (error: any): string => {
         if (typeof error === 'string') return error;
@@ -710,126 +716,168 @@ interface SuccessMessageDetails {
     setLoading(false);
   };
 
-    const handleFullRepayment = async () => {
-        if (!provider || !wethAddress || !wethContract || !lendingProtocol) return;
-        setLoading(true);
-        setError('');
-        setSuccessMessage(null); // Clear any existing message
-        
-        try {
-            logAction('FULL_REPAY_STARTED', {});
-            
-            // Get current borrow amount with interest before repayment
-            const currentBorrowWithInterest = await lendingProtocol.getCurrentBorrowAmount(wethAddress, account);
-            const initialPosition = await lendingProtocol.userPositions(wethAddress, account);
-            
-            // Calculate actual interest that will be paid
-            const actualInterest = currentBorrowWithInterest.sub(initialPosition.borrowAmount);
-            console.log('Actual interest to be paid:', ethers.utils.formatEther(actualInterest));
-            
-            const fullRepayAmount = ethers.utils.formatEther(currentBorrowWithInterest);
-            console.log(`Repaying exact amount: ${fullRepayAmount} ETH`);
-            
-            // Get initial WETH balance
-            const initialWethBalance = await wethContract.balanceOf(account);
-            
-            // Determine repayment method and execute
-            const hasEnoughWeth = initialWethBalance.gte(currentBorrowWithInterest);
-            let tx;
-            
-            if (hasEnoughWeth) {
-                console.log(`Repaying full amount (${fullRepayAmount} ETH) with WETH tokens`);
-                
-                const allowance = await wethContract.allowance(account, lendingProtocol.address);
-                if (allowance.lt(currentBorrowWithInterest)) {
-                    console.log("Approving WETH spend for full repayment");
-                    const approveTx = await wethContract.approve(
-                        lendingProtocol.address,
-                        currentBorrowWithInterest.mul(2)
-                    );
-                    await approveTx.wait();
-                }
-                
-                tx = await lendingProtocol.repay(
-                    wethAddress,
-                    currentBorrowWithInterest,
-                    { gasLimit: 500000 }
-                );
-            } else {
-                console.log(`Repaying full amount (${fullRepayAmount} ETH) with direct ETH`);
-                tx = await lendingProtocol.repay(
-                    wethAddress,
-                    currentBorrowWithInterest,
-                    { 
-                        value: currentBorrowWithInterest,
-                        gasLimit: 500000
-                    }
-                );
-            }
-            
-            // Wait for transaction confirmation
-            console.log("Waiting for full repayment transaction confirmation...");
-            const receipt = await tx.wait();
-            console.log("Full repayment confirmed:", receipt.transactionHash);
-            
-            // Get interest from event
-            let interestPaid = ethers.utils.formatEther(actualInterest); // Default to calculated interest
-            const repayEvent = receipt.events?.find(e => 
-                e.event === 'Repay' && 
-                e.args && 
-                e.args.length >= 4 && 
-                e.args[0].toLowerCase() === wethAddress.toLowerCase() && 
-                e.args[1].toLowerCase() === account.toLowerCase()
-            );
-            
-            if (repayEvent && repayEvent.args) {
-                // Prefer event interest if available
-                const eventInterest = ethers.utils.formatEther(repayEvent.args[3]);
-                if (parseFloat(eventInterest) > 0) {
-                    interestPaid = eventInterest;
-                }
-                console.log('Interest paid from event:', interestPaid);
-            }
-            
-            // Update UI and state
-            await loadUserPosition(account, provider);
-            await loadBalances();
-            
-            // Ensure interest is a meaningful number
-            const numericInterest = parseFloat(interestPaid);
-            const formattedInterest = numericInterest < 0.000001 ? '0' : numericInterest.toFixed(6);
-            const remainingWETH = await wethContract.balanceOf(account);
-
-            const messageDetails: SuccessMessageDetails = {
-                principal: ethers.utils.formatEther(initialPosition.borrowAmount),
-                interest: formattedInterest,
-                totalWETH: fullRepayAmount,
-                remainingWETH: ethers.utils.formatEther(await wethContract.balanceOf(account))
-              };
+    const handleFullRepayment = async (): Promise<void> => {
+      if (!provider || !wethAddress || !wethContract || !lendingProtocol) return;
+      setLoading(true);
+      setError('');
+      setSuccessMessage(null); // Clear any existing message
+      
+      try {
+          logAction('FULL_REPAY_STARTED', {});
+          
+          // 1. Check if there's any debt to repay first
+          const userPosition = await lendingProtocol.userPositions(wethAddress, account);
+          if (userPosition.borrowAmount.isZero()) {
+              console.log('No debt to repay');
+              setSuccessMessage({
+                  type: 'text',
+                  content: 'No debt to repay'
+              });
+              setLoading(false);
+              return;
+          }
+          
+          // 2. Get the exact current borrow amount with interest
+          // IMPORTANT: Don't add any buffer here - the contract will reject it
+          const currentBorrowWithInterest = await lendingProtocol.getCurrentBorrowAmount(wethAddress, account);
+          
+          console.log('Current borrow with interest:', ethers.utils.formatEther(currentBorrowWithInterest));
+          
+          // Calculate actual interest that will be paid
+          const actualInterest = currentBorrowWithInterest.sub(userPosition.borrowAmount);
+          console.log('Actual interest to be paid:', ethers.utils.formatEther(actualInterest));
+          
+          // Use the exact amount - don't add buffer
+          const repayAmount = currentBorrowWithInterest;
+          console.log(`Repaying exact amount: ${ethers.utils.formatEther(repayAmount)} ETH`);
+          
+          // Get initial WETH balance
+          const initialWethBalance = await wethContract.balanceOf(account);
+          
+          // Determine repayment method and execute
+          const hasEnoughWeth = initialWethBalance.gte(repayAmount);
+          let tx;
+          
+          if (hasEnoughWeth) {
+              console.log(`Repaying with WETH tokens`);
               
-            setSuccessMessage({
-                type: 'details',
-                content: messageDetails
-            });
+              // Approve the exact amount
+              const allowance = await wethContract.allowance(account, lendingProtocol.address);
+              if (allowance.lt(repayAmount)) {
+                  console.log("Approving WETH spend for repayment");
+                  const approveTx = await wethContract.approve(
+                      lendingProtocol.address,
+                      repayAmount.mul(2) // Still approve more than needed for gas efficiency
+                  );
+                  await approveTx.wait();
+              }
+              
+              tx = await lendingProtocol.repay(
+                  wethAddress,
+                  repayAmount,
+                  { gasLimit: 500000 }
+              );
+          } else {
+              console.log(`Repaying with direct ETH`);
+              tx = await lendingProtocol.repay(
+                  wethAddress,
+                  repayAmount,
+                  { 
+                      value: repayAmount,
+                      gasLimit: 500000
+                  }
+              );
+          }
+          
+          // Wait for transaction confirmation
+          console.log("Waiting for repayment transaction confirmation...");
+          const receipt = await tx.wait();
+          console.log("Repayment confirmed:", receipt.transactionHash);
+          
+          // Update UI and state
+          await loadUserPosition(account, provider);
+          await loadBalances();
+          
+          // Get interest from event for reporting
+          let interestPaid = ethers.utils.formatEther(actualInterest); // Default to calculated interest
+          const repayEvent = receipt.events?.find(e => 
+              e.event === 'Repay' && 
+              e.args && 
+              e.args.length >= 4 && 
+              e.args[0].toLowerCase() === wethAddress.toLowerCase() && 
+              e.args[1].toLowerCase() === account.toLowerCase()
+          );
+          
+          if (repayEvent && repayEvent.args) {
+              // Prefer event interest if available
+              const eventInterest = ethers.utils.formatEther(repayEvent.args[3]);
+              if (parseFloat(eventInterest) > 0) {
+                  interestPaid = eventInterest;
+              }
+              console.log('Interest paid from event:', interestPaid);
+          }
+          
+          // Check if there's still debt after repayment
+          const updatedPosition = await lendingProtocol.userPositions(wethAddress, account);
+          const updatedBorrowAmount = await lendingProtocol.getCurrentBorrowAmount(wethAddress, account);
+          
+          if (!updatedBorrowAmount.isZero() && updatedBorrowAmount.gt(ethers.utils.parseEther("0.000001"))) {
+              console.log('There is still some debt remaining, attempting another repayment...');
+              
+              // Need to refresh the borrow amount again
+              const remainingBorrow = await lendingProtocol.getCurrentBorrowAmount(wethAddress, account);
+              
+              // Second repayment attempt with exact amount
+              console.log(`Attempting second repayment of ${ethers.utils.formatEther(remainingBorrow)} ETH`);
+              
+              const secondTx = await lendingProtocol.repay(
+                  wethAddress,
+                  remainingBorrow,
+                  hasEnoughWeth ? {} : { value: remainingBorrow }
+              );
+              
+              await secondTx.wait();
+              console.log('Second repayment completed');
+              
+              // Update UI and state again
+              await loadUserPosition(account, provider);
+              await loadBalances();
+          }
+          
+          // Ensure interest is a meaningful number
+          const numericInterest = parseFloat(interestPaid);
+          const formattedInterest = numericInterest < 0.000001 ? '0' : numericInterest.toFixed(6);
+          
+          const messageDetails: SuccessMessageDetails = {
+              principal: ethers.utils.formatEther(userPosition.borrowAmount),
+              interest: formattedInterest,
+              totalWETH: ethers.utils.formatEther(repayAmount),
+              remainingWETH: ethers.utils.formatEther(await wethContract.balanceOf(account))
+          };
+            
+          setSuccessMessage({
+              type: 'details',
+              content: messageDetails
+          });
 
-            // Keep success message visible for 20 seconds
-            setTimeout(() => {
-                setSuccessMessage(null);
-                console.log('Clearing full repayment success message after timeout');
-            }, 20000);
-            
-            logAction('FULL_REPAY_COMPLETED', {
-                amount: fullRepayAmount,
-                interestPaid: interestPaid,
-                method: hasEnoughWeth ? 'WETH_TOKENS' : 'ETH',
-            });
-            
-        } catch (err) {
-            console.error('Full repayment failed:', err);
-            setError(getSimplifiedErrorMessage(err));
-        }
-        setLoading(false);
-    };
+          // Keep success message visible for 20 seconds
+          setTimeout(() => {
+              setSuccessMessage(null);
+              console.log('Clearing success message after timeout');
+          }, 20000);
+          
+          logAction('FULL_REPAY_COMPLETED', {
+              amount: ethers.utils.formatEther(repayAmount),
+              interestPaid: interestPaid,
+              method: hasEnoughWeth ? 'WETH_TOKENS' : 'ETH',
+          });
+          
+      } catch (err) {
+          console.error('Full repayment failed:', err);
+          setError(getSimplifiedErrorMessage(err));
+      }
+      setLoading(false);
+  };
 
     const fetchInterestDiagnostics = async () => {
         if (!provider || !account || !wethAddress) return;
@@ -891,6 +939,7 @@ interface SuccessMessageDetails {
       disabled={diagnosticsLoading || !account}
       variant="outline"
       className="mt-2 text-sm"
+      data-testid="show-interest-details-button"
     >
       {diagnosticsLoading ? 'Loading...' : 'Show Interest Details'}
     </Button>
@@ -900,12 +949,13 @@ interface SuccessMessageDetails {
     if (!showDiagnostics) return null;
     
     return (
-      <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+      <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200" data-testid="interest-diagnostics-panel">
         <div className="flex justify-between items-center mb-3">
           <h3 className="font-medium text-slate-800">Interest Diagnostics</h3>
           <button 
             onClick={() => setShowDiagnostics(false)}
             className="text-sm text-slate-500 hover:text-slate-700"
+            data-testid="close-interest-diagnostics"
           >
             Close
           </button>
@@ -920,31 +970,31 @@ interface SuccessMessageDetails {
                 <h4 className="font-medium">Timing Information</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <p className="text-slate-600">Last Update:</p>
-                  <p>{interestDiagnostics.lastUpdate}</p>
+                  <p data-testid="last-update-time">{interestDiagnostics.lastUpdate}</p>
                   
                   <p className="text-slate-600">Current Time:</p>
-                  <p>{interestDiagnostics.currentTime}</p>
+                  <p data-testid="current-time">{interestDiagnostics.currentTime}</p>
                   
                   <p className="text-slate-600">Time Elapsed:</p>
-                  <p>{interestDiagnostics.timeElapsed}</p>
+                  <p data-testid="time-elapsed">{interestDiagnostics.timeElapsed}</p>
                   
                   <p className="text-slate-600">5-min Intervals:</p>
-                  <p>{interestDiagnostics.intervalsElapsed}</p>
+                  <p data-testid="intervals-elapsed">{interestDiagnostics.intervalsElapsed}</p>
                   
                   <p className="text-slate-600">Partial Interval:</p>
-                  <p>{interestDiagnostics.partialInterval}</p>
+                  <p data-testid="partial-interval">{interestDiagnostics.partialInterval}</p>
                 </div>
                 
                 <h4 className="font-medium mt-3">Interest Indices</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <p className="text-slate-600">Current Index:</p>
-                  <p>{interestDiagnostics.currentIndex}</p>
+                  <p data-testid="current-index">{interestDiagnostics.currentIndex}</p>
                   
                   <p className="text-slate-600">Estimated New:</p>
-                  <p>{interestDiagnostics.estimatedNewIndex}</p>
+                  <p data-testid="estimated-new-index">{interestDiagnostics.estimatedNewIndex}</p>
                   
                   <p className="text-slate-600">Index Change:</p>
-                  <p>{interestDiagnostics.indexChange}</p>
+                  <p data-testid="index-change">{interestDiagnostics.indexChange}</p>
                 </div>
               </div>
             )}
@@ -954,18 +1004,21 @@ interface SuccessMessageDetails {
                 <h4 className="font-medium">Accrued Interest</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <p className="text-slate-600">Principal:</p>
-                  <p>{detailedInterest.principal} ETH</p>
+                  <p data-testid="principal-amount">{detailedInterest.principal} ETH</p>
                   
                   <p className="text-slate-600">Current Amount:</p>
-                  <p>{detailedInterest.currentAmount} ETH</p>
+                  <p data-testid="current-amount">{detailedInterest.currentAmount} ETH</p>
                   
                   <p className="text-slate-600">Interest Accrued:</p>
-                  <p className={parseFloat(detailedInterest.interestAccrued) > 0 ? "text-amber-600 font-medium" : ""}>
+                  <p 
+                    className={parseFloat(detailedInterest.interestAccrued) > 0 ? "text-amber-600 font-medium" : ""}
+                    data-testid="interest-accrued-value"
+                  >
                     {detailedInterest.interestAccrued} ETH
                   </p>
                   
                   <p className="text-slate-600">Effective Rate:</p>
-                  <p>{detailedInterest.effectiveRate}</p>
+                  <p data-testid="effective-rate">{detailedInterest.effectiveRate}</p>
                 </div>
               </div>
             )}
@@ -976,6 +1029,7 @@ interface SuccessMessageDetails {
                 variant="outline" 
                 size="sm"
                 className="w-full"
+                data-testid="refresh-interest-data-button"
               >
                 Refresh Interest Data
               </Button>
@@ -1350,7 +1404,7 @@ interface SuccessMessageDetails {
         
         {/* Form view */}
         {selectedPositionId && selectedPositionData ? (
-          <Card>
+          <Card data-testid="liquidation-details">
             <CardHeader className="pb-3 bg-gray-50 border-b">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-base">
@@ -1363,6 +1417,7 @@ interface SuccessMessageDetails {
                   variant="outline" 
                   size="sm"
                   onClick={cancelLiquidation}
+                  data-testid="cancel-liquidation"
                 >
                   Cancel
                 </Button>
@@ -1404,6 +1459,7 @@ interface SuccessMessageDetails {
                       placeholder="Enter ETH amount"
                       disabled={liquidationLoading || fullyLiquidating}
                       className="w-full p-2 border rounded"
+                      data-testid="liquidation-amount-input"
                     />
                   </div>
                   <div className="flex space-x-2">
@@ -1411,6 +1467,7 @@ interface SuccessMessageDetails {
                     onClick={handleLiquidate}
                     disabled={liquidationLoading || fullyLiquidating || !liquidationAmount}
                     className="w-full p-2"
+                    data-testid="liquidate-button"
                   >
                     {liquidationLoading ? "Liquidating..." : `Liquidate Position ${
                       liquidationAmount ? ` (+${calculateExpectedBonus(liquidationAmount)} ETH bonus)` : ''
@@ -1441,13 +1498,17 @@ interface SuccessMessageDetails {
                             ? 'opacity-50 cursor-not-allowed' 
                             : 'cursor-pointer hover:border-blue-300'
                     }`}
+                    data-testid={
+                      position.user.toLowerCase() === account.toLowerCase() 
+                        ? 'own-liquidatable-position' 
+                        : 'liquidatable-position'
+                    }
                     onClick={() => {
-                        // Double-check to prevent own position selection
                         if (position.user.toLowerCase() !== account.toLowerCase()) {
                             handleSelectPosition(position);
                         }
                     }}
-                >
+                  >
                   <CardContent className="p-4">
                     <div className="flex justify-between items-center">
                       <div>
@@ -1507,6 +1568,7 @@ interface SuccessMessageDetails {
                 onClick={handleConnect}
                 disabled={loading}
                 className="w-full"
+                data-testid="connect-wallet-button"
               >
                 {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
               </Button>
@@ -1519,9 +1581,9 @@ interface SuccessMessageDetails {
 
                 {successMessage && (
                 successMessage.type === 'details' ? (
-                    <SuccessMessageAlert details={successMessage.content as SuccessMessageDetails} />
+                    <SuccessMessageAlert details={successMessage.content as SuccessMessageDetails} data-testid="success-message-details"/>
                 ) : (
-                    <Alert className="bg-green-50 border-green-200">
+                    <Alert className="bg-green-50 border-green-200" data-testid="success-message">
                     <AlertDescription className="text-green-800">
                         {successMessage.content as string}
                     </AlertDescription>
@@ -1530,18 +1592,18 @@ interface SuccessMessageDetails {
                 )}
       
                 {position && (
-                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg" data-testid="position-info">
                     <div>
-                        <p className="text-sm">
+                        <p className="text-sm" data-testid="deposit-amount">
                             Deposit: {position.depositAmount} ETH 
                             <span className="text-gray-500 ml-2">(${position.depositAmountUSD})</span>
                         </p>
-                        <p className="text-sm">
+                        <p className="text-sm" data-testid="borrow-amount">
                             Borrow: {position.borrowAmount} ETH
                             <span className="text-gray-500 ml-2">(${position.borrowAmountUSD})</span>
                         </p>
                         {parseFloat(position.interestAccrued) > 0 && (
-                            <p className="text-sm text-amber-600">
+                            <p className="text-sm text-amber-600" data-testid="interest-accrued">
                                 Interest Accrued: {position.interestAccrued} ETH
                                 <span className="ml-2">(${position.interestAccruedUSD})</span>
                             </p>
@@ -1554,12 +1616,13 @@ interface SuccessMessageDetails {
                         </p>
                     </div>
                     <div>
-                        <p className="text-sm">Health Factor: {position.healthFactor}</p>
+                        <p className="text-sm" data-testid="health-factor">Health Factor: {position.healthFactor}</p>
                         <Progress 
                             value={parseFloat(position.healthFactor) * 10} 
                             className="h-2"
                             color={parseFloat(position.healthFactor) < 1.2 ? "red" : 
                                 parseFloat(position.healthFactor) < 1.5 ? "amber" : "green"}
+                            data-testid="health-factor-progress"
                         />
                         <p className="text-sm mt-2">Last Update: {position.lastUpdateTime}</p>
                     </div>
@@ -1568,10 +1631,10 @@ interface SuccessMessageDetails {
       
               <Tabs defaultValue="deposit" className="w-full">
                 <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="deposit">Deposit/Withdraw</TabsTrigger>
-                  <TabsTrigger value="borrow">Borrow/Repay</TabsTrigger>
-                  <TabsTrigger value="liquidate">Liquidate</TabsTrigger>
-                  <TabsTrigger value="stake">Stake WETH</TabsTrigger>
+                  <TabsTrigger value="deposit" data-testid="deposit-withdraw-tab">Deposit/Withdraw</TabsTrigger>
+                  <TabsTrigger value="borrow" data-testid="borrow-repay-tab">Borrow/Repay</TabsTrigger>
+                  <TabsTrigger value="liquidate" data-testid="liquidate-tab">Liquidate</TabsTrigger>
+                  <TabsTrigger value="stake" data-testid="stake-tab">Stake WETH</TabsTrigger>
                 </TabsList>
       
                 <TabsContent value="deposit">
@@ -1583,11 +1646,13 @@ interface SuccessMessageDetails {
                         onChange={(e) => setDepositAmount(e.target.value)}
                         placeholder="Amount to deposit"
                         disabled={loading}
+                        data-testid="deposit-input"
                       />
                       <Button 
                         onClick={handleDeposit} 
                         disabled={loading}
                         className="w-full"
+                        data-testid="deposit-button"
                       >
                         Deposit
                       </Button>
@@ -1631,11 +1696,13 @@ interface SuccessMessageDetails {
                         onChange={(e) => setBorrowAmount(e.target.value)}
                         placeholder="Amount to borrow"
                         disabled={loading}
+                        data-testid="borrow-input"
                       />
                       <Button 
                         onClick={handleBorrow} 
                         disabled={loading}
                         className="w-full"
+                        data-testid="borrow-button"
                       >
                         Borrow
                       </Button>
@@ -1653,6 +1720,7 @@ interface SuccessMessageDetails {
                                 onClick={handleFullRepayment}
                                 disabled={loading}
                                 className="w-full bg-green-600 hover:bg-green-700"
+                                data-testid="repay-full-button"
                             >
                                 Repay Full Amount
                             </Button>

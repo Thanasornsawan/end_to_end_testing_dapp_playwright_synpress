@@ -1,43 +1,66 @@
 // pages/lending.page.ts
-import { type Page, type Locator } from "@playwright/test";
+import { type Page, type Locator, expect } from "@playwright/test";
 import { MetaMask } from "@synthetixio/synpress/playwright";
 import { TestData } from '../config/test-data.config';
 import BasePage from "./base.page";
 
 export default class LendingPage extends BasePage {
 
-  readonly connectWalletButton: Locator;
-  readonly connectedWalletButton: Locator;
-  readonly depositInput: Locator;
-  readonly depositButton: Locator;
-  readonly borrowInput: Locator;
-  readonly borrowButton: Locator;
-  readonly repayFullButton: Locator;
-  readonly withdrawInput: Locator;
-  readonly withdrawButton: Locator;
-  readonly borrowRepayTab: Locator;
-  readonly depositWithdrawTab: Locator;
-  readonly showInterestDetailsButton: Locator;
-  readonly refreshInterestDataButton: Locator;
-  readonly interestAccruedText: Locator;
+    readonly connectWalletButton: Locator;
+    readonly connectedWalletButton: Locator;
+    readonly depositInput: Locator;
+    readonly depositButton: Locator;
+    readonly borrowInput: Locator;
+    readonly borrowButton: Locator;
+    readonly repayFullButton: Locator;
+    readonly withdrawInput: Locator;
+    readonly withdrawButton: Locator;
+    readonly borrowRepayTab: Locator;
+    readonly depositWithdrawTab: Locator;
+    readonly showInterestDetailsButton: Locator;
+    readonly refreshInterestDataButton: Locator;
+    readonly interestAccruedValue: Locator;
+    readonly liquidateTab: Locator;
+    readonly liquidatablePositionsList: Locator;
+    readonly ownLiquidatablePosition: Locator;
+    readonly liquidationAmountInput: Locator;
+    readonly liquidateButton: Locator;
+    readonly liquidationSuccessMessage: Locator;
+    readonly healthFactorText: Locator;
+    readonly currentAccountAddress: Locator;
+    readonly liquidationDetailsCard: Locator;
+    readonly cancelLiquidationButton: Locator;
 
   constructor(page: Page, metamask: MetaMask) {
     super(page, metamask);
     
+    // Initialize existing selectors - update to use data-testid where available
     this.connectWalletButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.CONNECT_WALLET });
     this.connectedWalletButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.CONNECTED_WALLET });
-    this.depositInput = page.getByPlaceholder(TestData.SELECTORS.INPUTS.DEPOSIT);
-    this.depositButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.DEPOSIT });
-    this.borrowInput = page.getByPlaceholder(TestData.SELECTORS.INPUTS.BORROW);
-    this.borrowButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.BORROW });
-    this.repayFullButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.REPAY_FULL });
+    this.depositInput = page.getByTestId('deposit-input');
+    this.depositButton = page.getByTestId('deposit-button');
+    this.borrowInput = page.getByTestId('borrow-input');
+    this.borrowButton = page.getByTestId('borrow-button');
+    this.repayFullButton = page.getByTestId('repay-full-button');
     this.withdrawInput = page.getByPlaceholder(TestData.SELECTORS.INPUTS.WITHDRAW);
     this.withdrawButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.WITHDRAW });
-    this.borrowRepayTab = page.getByRole('tab', { name: TestData.SELECTORS.TABS.BORROW_REPAY });
-    this.depositWithdrawTab = page.getByRole('tab', { name: TestData.SELECTORS.TABS.DEPOSIT_WITHDRAW });
-    this.showInterestDetailsButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.SHOW_INTEREST });
-    this.refreshInterestDataButton = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.REFRESH_INTEREST });
-    this.interestAccruedText = page.getByText(TestData.SELECTORS.LABELS.INTEREST_ACCURED, { exact: true });
+    this.borrowRepayTab = page.getByTestId('borrow-repay-tab');
+    this.depositWithdrawTab = page.getByTestId('deposit-withdraw-tab');
+    this.showInterestDetailsButton = page.getByTestId('show-interest-details-button');
+    this.refreshInterestDataButton = page.getByTestId('refresh-interest-data-button');
+    this.interestAccruedValue = page.getByTestId('interest-accrued-value');
+    
+    // Initialize new selectors for liquidation with data-testid
+    this.liquidateTab = page.getByTestId('liquidate-tab');
+    this.liquidatablePositionsList = page.getByTestId('liquidatable-position');
+    this.ownLiquidatablePosition = page.getByTestId('own-liquidatable-position');
+    this.liquidationAmountInput = page.getByTestId('liquidation-amount-input');
+    this.liquidateButton = page.getByTestId('liquidate-button');
+    this.liquidationSuccessMessage = page.getByTestId('success-message');
+    this.healthFactorText = page.getByTestId('health-factor');
+    this.currentAccountAddress = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.CONNECTED_WALLET });
+    this.liquidationDetailsCard = page.getByTestId('liquidation-details');
+    this.cancelLiquidationButton = page.getByTestId('cancel-liquidation');
   }
 
   // Connect wallet actions
@@ -50,6 +73,17 @@ export default class LendingPage extends BasePage {
   async verifyWalletConnected(): Promise<void> {
     await this.connectedWalletButton.waitFor({ state: 'visible' });
     await this.waitForTimeout(TestData.TIMEOUTS.MEDIUM);
+  }
+
+  async verifyConnectedCorrectAccount(expectedAccount?: string): Promise<void> {
+    // Verify the connected wallet button is visible
+    await this.connectedWalletButton.waitFor({ state: 'visible' });
+    if (expectedAccount) {
+      const expectedTextPattern = `Connected: ${expectedAccount.slice(0, 6)}...${expectedAccount.slice(-4)}`;
+      // Use Playwright's expect for a more detailed assertion
+      await expect(this.connectedWalletButton).toHaveText(new RegExp(expectedTextPattern, 'i'));
+    }
+    await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
   }
 
   // Deposit actions
@@ -105,9 +139,31 @@ export default class LendingPage extends BasePage {
   }
 
   async getInterestAmount(): Promise<number> {
-    const interestElement = await this.interestAccruedText.locator('xpath=following-sibling::p').first();
-    const interestValue = await interestElement.textContent();
-    return interestValue ? parseFloat(interestValue.replace(' ETH', '')) : 0;
+    try {
+      // Use the specific data-testid to get the interest value
+      const interestElement = this.page.getByTestId('interest-accrued-value');
+      
+      // Wait for the element to be visible
+      await interestElement.waitFor({ state: 'visible', timeout: 5000 });
+      
+      // Get text content
+      const interestText = await interestElement.textContent();
+      console.log('Interest accrued text:', interestText);
+      
+      if (interestText) {
+        // Extract numeric value using regex
+        const match = interestText.match(/(\d+\.\d+)/);
+        if (match && match[1]) {
+          return parseFloat(match[1]);
+        }
+      }
+      
+      console.log('No interest value found');
+      return 0;
+    } catch (error) {
+      console.error('Error getting interest amount:', error);
+      return 0;
+    }
   }
 
   // Repay actions
@@ -160,27 +216,184 @@ export default class LendingPage extends BasePage {
         }
     }
 
-  async waitForPositiveInterest(maxAttempts: number = 10): Promise<number> {
-    let interestAmount = 0;
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`\nAttempt ${attempt} to check interest...`);
-      
-      await this.refreshInterestData();
-      interestAmount = await this.getInterestAmount();
-      
-      if (interestAmount > 0) {
-        console.log('Found positive interest amount:', interestAmount);
-        break;
-      }
-
-      if (attempt < maxAttempts) {
-        console.log('Interest is still 0, waiting before next check...');
-        await this.waitForTimeout(1000);
-      }
+    async waitForPositiveInterest(maxAttempts: number = 10): Promise<number> {
+        let interestAmount = 0;
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          console.log(`\nAttempt ${attempt} to check interest...`);
+          
+          try {
+            // Click the button to show interest details panel
+            await this.showInterestDetailsButton.click();
+            await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+            
+            // Wait for panel to be visible
+            await this.page.getByTestId('interest-diagnostics-panel').waitFor({ state: 'visible' });
+            
+            // Click refresh interest data button
+            await this.refreshInterestDataButton.click();
+            await this.waitForTimeout(TestData.TIMEOUTS.MEDIUM); // Give it a bit more time to refresh
+            
+            // Get interest amount
+            interestAmount = await this.getInterestAmount();
+            console.log(`Current interest amount: ${interestAmount}`);
+            
+            if (interestAmount > 0) {
+              console.log('Found positive interest amount:', interestAmount);
+              break;
+            }
+            
+            if (attempt < maxAttempts) {
+              console.log('Interest is still 0, waiting before next check...');
+              await this.waitForTimeout(2000);
+            }
+          } catch (error) {
+            console.error(`Error in attempt ${attempt}:`, error);
+          }
+        }
+        
+        return interestAmount;
     }
 
-    return interestAmount;
+   /**
+   * Switch to the liquidate tab
+   */
+ async switchToLiquidateTab(): Promise<void> {
+    await this.liquidateTab.click();
+    await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
   }
 
+  /**
+   * Wait for liquidatable positions to load
+   */
+  async waitForLiquidatablePositions(timeout: number = 5000): Promise<void> {
+    try {
+      // Check if either a liquidatable position or "no positions" message is visible
+      await Promise.race([
+        this.page.waitForSelector('[data-testid="liquidatable-position"]', { state: 'visible', timeout }),
+        this.page.waitForSelector('[data-testid="own-liquidatable-position"]', { state: 'visible', timeout }),
+        this.page.waitForSelector('text=No positions available for liquidation', { state: 'visible', timeout })
+      ]);
+      await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+    } catch (error) {
+      console.log('No liquidatable positions found within timeout period');
+    }
+  }
+
+  /**
+   * Verify own address is in liquidation list but not selectable
+   */
+  async verifyOwnAddressInLiquidationList(): Promise<void> {
+    // Verify the own position element exists
+    await expect(this.ownLiquidatablePosition).toBeVisible();
+    
+    // Verify it contains "Your Position" text
+    await expect(this.ownLiquidatablePosition.getByText('Your Position')).toBeVisible();
+  }
+
+  /**
+   * Verify own position is not selectable
+   */
+  async verifyOwnPositionNotSelectable(): Promise<void> {
+    // Check that the own position has the disabled attribute or proper aria role
+    const isDisabled = await this.ownLiquidatablePosition.evaluate(node => {
+      return (
+        node.getAttribute('aria-disabled') === 'true' ||
+        node.getAttribute('data-disabled') === 'true' ||
+        node.hasAttribute('disabled')
+      );
+    });
+    
+    expect(isDisabled).toBeTruthy();
+    
+    // Try to click it and verify no selection happens
+    await this.ownLiquidatablePosition.click();
+    
+    // Verify the liquidation details card didn't appear
+    await expect(this.liquidationDetailsCard).not.toBeVisible();
+  }
+
+  /**
+   * Select the first liquidatable position
+   */
+  async selectFirstLiquidatablePosition(): Promise<void> {
+    // Wait for the positions to load
+    await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+    
+    // Find the first liquidatable position with the proper data-testid
+    const hasLiquidatablePositions = await this.liquidatablePositionsList.count() > 0;
+    
+    if (!hasLiquidatablePositions) {
+      throw new Error('No liquidatable positions found');
+    }
+    
+    // Click the first liquidatable position
+    await this.liquidatablePositionsList.first().click();
+    
+    // Verify the liquidation details card is visible
+    await expect(this.liquidationDetailsCard).toBeVisible();
+  }
+
+  /**
+   * Enter a specific liquidation amount
+   */
+  async enterLiquidationAmount(amount: string): Promise<void> {
+    await this.liquidationAmountInput.fill(amount);
+  }
+
+  /**
+   * Enter a percentage of the borrower's debt as liquidation amount
+   */
+  async enterLiquidationPercentage(percentage: number): Promise<void> {
+    // Get the borrower's debt amount from the liquidation details card
+    const debtText = await this.liquidationDetailsCard.getByText(/Debt:/).locator('xpath=following-sibling::p').first().textContent();
+    const debtMatch = debtText ? debtText.match(/(\d+\.\d+)/) : null;
+    
+    if (!debtMatch || !debtMatch[1]) {
+      throw new Error('Could not determine borrower\'s debt amount');
+    }
+    
+    const debtAmount = parseFloat(debtMatch[1]);
+    const liquidationAmount = (debtAmount * percentage / 100).toFixed(6);
+    
+    // Enter the calculated amount
+    await this.liquidationAmountInput.fill(liquidationAmount);
+    console.log(`Entering liquidation amount: ${liquidationAmount} ETH (${percentage}% of debt: ${debtAmount} ETH)`);
+  }
+
+  /**
+   * Click the liquidate button
+   */
+  async clickLiquidate(): Promise<void> {
+    await this.liquidateButton.click();
+  }
+
+  /**
+   * Confirm the liquidation transaction in MetaMask
+   */
+  async confirmLiquidation(): Promise<void> {
+    await this.metamask.confirmTransaction();
+    await this.waitForTimeout(TestData.TIMEOUTS.LONG);
+  }
+
+  /**
+   * Verify liquidation success message
+   */
+  async verifyLiquidationSuccess(): Promise<void> {
+    await expect(this.liquidationSuccessMessage).toBeVisible();
+  }
+
+  /**
+   * Get the current health factor
+   */
+  async getCurrentHealthFactor(): Promise<number> {
+    const healthFactorText = await this.healthFactorText.textContent();
+    const matches = healthFactorText ? healthFactorText.match(/(\d+\.\d+)/) : null;
+    
+    if (!matches || !matches[1]) {
+      throw new Error('Could not determine health factor');
+    }
+    
+    return parseFloat(matches[1]);
+  }
 }

@@ -1,10 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
+import type { Ethereum } from '../../types/window';
 import EnhancedLendingDApp from '../components/EnhancedLendingDApp';
 import ProtocolStatistics from '../components/ProtocolStatistics';
 import RiskMonitor from '../components/RiskMonitor';
 import { Card } from "../components/ui/card";
-import { connectWallet, getContracts } from '../utils/web3';
+import { 
+  connectWallet, 
+  disconnectWallet, 
+  getContracts, 
+  setupWeb3Listeners,
+  getCurrentMetaMaskAccount 
+} from '../utils/web3';
 import { APIIntegrationManager } from "../../typechain/contracts/integration/APIIntegrationManager";
 import { updateMarketData, logUserActivity, logFailedTransaction } from '../../services/database';
 
@@ -16,30 +23,138 @@ export default function Home() {
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [apiManager, setApiManager] = useState<APIIntegrationManager | null>(null);
 
-  const handleWalletConnection = async () => {
-    const web3Provider = await connectWallet();
-    if (web3Provider) {
-      setProvider(web3Provider);
-      const accounts = await web3Provider.listAccounts();
-      if (accounts[0]) {
-        setAccount(accounts[0]);
-        try {
-          const { apiManager: apiManagerContract } = await getContracts(web3Provider);
-          setApiManager(apiManagerContract);
-          
-          // Get current block number to start tracking from
-          const currentBlock = await web3Provider.getBlockNumber();
-          lastProcessedBlock = currentBlock;
-          
-          console.log('Contracts initialized:', {
-            account: accounts[0],
-            apiManagerAddress: apiManagerContract.address,
-            startingBlock: currentBlock
-          });
-        } catch (error) {
-          console.error('Error setting up contracts:', error);
+  // Add a method to handle account changes
+  const handleAccountsChanged = useCallback(async (accounts: string[]) => {
+    if (typeof window !== 'undefined' && window.ethereum) {
+    console.log('Accounts changed:', accounts);
+    
+    // If no accounts, disconnect completely
+    if (accounts.length === 0) {
+      setAccount('');
+      setProvider(null);
+      setApiManager(null);
+      return;
+    }
+  
+    // Get the first (selected) account
+    const newAccount = accounts[0].toLowerCase();
+    
+    // If the new account is different from the current account
+    if (!account || newAccount !== account.toLowerCase()) {
+      console.log(`Switching from ${account} to ${newAccount}`);
+      
+      try {
+        // Reinitialize provider with the new account
+        const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
+        
+        // Verify accounts are available
+        const verifiedAccounts = await web3Provider.listAccounts();
+        if (verifiedAccounts.length === 0) {
+          throw new Error('No accounts found');
         }
+  
+        // Set the new provider and account
+        setProvider(web3Provider);
+        setAccount(newAccount);
+  
+        // Reinitialize contracts
+        const { apiManager: apiManagerContract } = await getContracts(web3Provider);
+        setApiManager(apiManagerContract);
+        
+        // Update last processed block
+        const currentBlock = await web3Provider.getBlockNumber();
+        lastProcessedBlock = currentBlock;
+      } catch (error) {
+        console.error('Error handling account change:', error);
+        setAccount('');
+        setProvider(null);
+        setApiManager(null);
       }
+    }
+  }
+  }, [account]);
+
+  // Add a method to handle chain changes
+  const handleChainChanged = useCallback((chainId: string) => {
+    // Reload the page to reset the app state
+    window.location.reload();
+  }, []);
+
+  // Set up Web3 listeners when the component mounts
+  // Set up Web3 listeners when the component mounts
+useEffect(() => {
+  // Flag to prevent multiple setups
+  let isMounted = true;
+  let cleanupFunction: (() => void) | null = null;
+
+  const setupListeners = async () => {
+    if (!isMounted) return;
+
+    try {
+      // Setup listeners and get cleanup function
+      const cleanup = setupWeb3Listeners(
+        handleAccountsChanged, 
+        handleChainChanged
+      );
+
+      // Store cleanup function
+      cleanupFunction = cleanup;
+    } catch (error) {
+      console.error('Error setting up Web3 listeners:', error);
+    }
+  };
+
+  // Run setup
+  setupListeners();
+
+  // Cleanup function
+  return () => {
+    isMounted = false;
+    
+    // Call the cleanup function if it exists
+    if (cleanupFunction) {
+      cleanupFunction();
+    }
+  };
+}, [handleAccountsChanged, handleChainChanged]);
+
+  const handleWalletConnection = async (): Promise<void> => {
+    try {
+      // Get the currently selected MetaMask account
+      const currentMetaMaskAccount = await getCurrentMetaMaskAccount();
+      
+      const web3Provider = await connectWallet();
+      if (!web3Provider) {
+        throw new Error('Failed to connect wallet');
+      }
+  
+      // Get the list of accounts
+      const accounts = await web3Provider.listAccounts();
+      if (accounts.length === 0) {
+        throw new Error('No accounts found');
+      }
+  
+      // Use the first (selected) account
+      const connectedAccount = accounts[0].toLowerCase();
+  
+      // Check if the connected account is different from the current account
+      if (!account || connectedAccount !== account.toLowerCase()) {
+        // Set the provider and account
+        setProvider(web3Provider);
+        setAccount(connectedAccount);
+        
+        // Initialize additional contracts
+        const { apiManager: apiManagerContract } = await getContracts(web3Provider);
+        setApiManager(apiManagerContract);
+        
+        // Update last processed block
+        const currentBlock = await web3Provider.getBlockNumber();
+        lastProcessedBlock = currentBlock;
+      }
+    } catch (error) {
+      console.error('Wallet connection error:', error);
+      setAccount('');
+      setProvider(null);
     }
   };
 

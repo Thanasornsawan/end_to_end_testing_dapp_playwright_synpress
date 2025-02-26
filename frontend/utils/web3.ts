@@ -10,17 +10,69 @@ import { MockPriceOracle } from '@typechain/contracts/mocks/MockPriceOracle';
 import { MockPriceOracle__factory } from '@typechain/factories/contracts/mocks/MockPriceOracle__factory';
 
 export async function connectWallet(): Promise<ethers.providers.Web3Provider | null> {
-    try {
-      if (typeof window !== 'undefined' && window.ethereum) {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        await provider.send("eth_requestAccounts", []);
-        return provider;
+  try {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      // Create a new provider
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      
+      // Explicitly request accounts
+      await provider.send("eth_requestAccounts", []);
+      
+      // Get the list of accounts
+      const accounts = await provider.listAccounts();
+      if (accounts.length === 0) {
+        console.error('No accounts found');
+        return null;
       }
-      return null;
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      return null;
+
+      console.log('Connected with account:', accounts[0]);
+      return provider;
     }
+    return null;
+  } catch (error) {
+    console.error('Error connecting wallet:', error);
+    return null;
+  }
+}
+
+export async function getCurrentMetaMaskAccount(): Promise<string | null> {
+  try {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_accounts' 
+      }) as string[];
+
+      return accounts.length > 0 ? accounts[0] : null;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting current account:', error);
+    return null;
+  }
+}
+
+export async function disconnectWallet(): Promise<void> {
+  if (typeof window !== 'undefined' && window.ethereum) {
+    try {
+      // Instead of requesting permissions, just clear the connection
+      // This method varies depending on MetaMask version
+      if (window.ethereum.isMetaMask) {
+        // For newer MetaMask versions
+        await window.ethereum.request({
+          method: "wallet_requestPermissions",
+          params: [{ eth_accounts: {} }]
+        });
+      } else {
+        // Fallback for older versions or other wallets
+        await window.ethereum.request({
+          method: "eth_logout"
+        });
+      }
+    } catch (error) {
+      console.warn('Disconnect attempt failed:', error);
+      // Ignore errors, as this might not be supported consistently
+    }
+  }
 }
   
 export async function getContracts(provider: ethers.providers.Web3Provider) {
@@ -124,12 +176,22 @@ export function setupWeb3Listeners(
   onChainChanged: (chainId: string) => void
 ) {
   if (typeof window !== 'undefined' && window.ethereum) {
-    window.ethereum.on('accountsChanged', onAccountsChanged);
-    window.ethereum.on('chainChanged', onChainChanged);
+    const handleAccountsChanged = (accounts: string[]) => {
+      console.log('Accounts changed listener triggered:', accounts);
+      onAccountsChanged(accounts);
+    };
+
+    const handleChainChanged = (chainId: string) => {
+      console.log('Chain changed listener triggered:', chainId);
+      onChainChanged(chainId);
+    };
+
+    window.ethereum.on('accountsChanged', handleAccountsChanged);
+    window.ethereum.on('chainChanged', handleChainChanged);
 
     return () => {
-      window.ethereum?.removeListener('accountsChanged', onAccountsChanged);
-      window.ethereum?.removeListener('chainChanged', onChainChanged);
+      window.ethereum?.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum?.removeListener('chainChanged', handleChainChanged);
     };
   }
   return () => {};

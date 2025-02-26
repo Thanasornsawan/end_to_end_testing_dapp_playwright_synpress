@@ -144,7 +144,7 @@ const RiskMonitor = ({
               />
             </div>
 
-            {parseFloat(riskMetrics.healthFactor) < 1.2 && (
+            {parseFloat(riskMetrics.liquidationHealthFactor) < 1.2 && (
               <Alert variant="destructive">
                 <AlertDescription>
                   Your position is approaching liquidation threshold. Consider adding more collateral or repaying debt.
