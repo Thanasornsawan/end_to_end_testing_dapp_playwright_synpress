@@ -50,18 +50,7 @@ Edit `.env` with your configuration:
 cd web3_test
 npx synpress wallet-setup
 ```
-
-4. Run Tests in Headed or Headless mode
-
-```bash
-npm run test:playwright:headful
-```
-
-or
-
-```bash
-npm run test:playwright:headless
-```
+![wallet](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/wallet_setup.gif?raw=true)
 
 ### How to run project locally (DApp test cases)
 
@@ -72,11 +61,15 @@ npx hardhat node
 # Terminal 2: Deploy smart contract to local network
 npx hardhat run scripts/deploy/deployAndUpdateAddresses.ts --network local
 
-# Terminal 3: Start the front-end server
+# Terminal 3: Start the front-end server (localhost:3000)
 cd frontend & npm run dev
 
 # Terminal 4: Run test cases with Playwright
 npm run test:playwright:headless
+
+## or with UI headful
+
+npm run test:playwright:headful
 ```
 
 If you want to update oracle price manually, run command:
