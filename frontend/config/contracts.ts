@@ -1,16 +1,16 @@
 // THIS FILE IS AUTO-GENERATED. DO NOT EDIT DIRECTLY.
-// Last updated: 2025-02-25T18:48:33.617Z
+// Last updated: 2025-02-27T07:29:15.072Z
 // Network updated: local
 
 export const CONTRACT_ADDRESSES = {
   "local": {
-    "weth": "0x21dF544947ba3E8b3c32561399E88B52Dc8b2823",
-    "usdc": "0x2E2Ed0Cfd3AD2f1d34481277b3204d807Ca2F8c2",
-    "lendingProtocol": "0xDC11f7E700A4c898AE5CAddB1082cFfa76512aDD",
-    "enhancedLendingProtocol": "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02",
-    "priceOracle": "0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43",
-    "apiManager": "0x36b58F5C1969B7b6591D752ea6F5486D069010AB",
-    "stakingPool": "0x4EE6eCAD1c2Dae9f525404De8555724e3c35d07B"
+    "weth": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "usdc": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "lendingProtocol": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+    "enhancedLendingProtocol": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+    "priceOracle": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+    "apiManager": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+    "stakingPool": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e"
   },
   "mainnet": {
     "weth": "0xC070A317F23E9A4e982e356485416251dd3Ed944",

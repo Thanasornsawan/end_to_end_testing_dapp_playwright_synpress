@@ -367,53 +367,67 @@ interface SuccessMessageDetails {
   }
 
   const getSimplifiedErrorMessage = (error: any): string => {
-        if (typeof error === 'string') return error;
-        
-        // Check for common error messages
-        const errorString = error?.message || error?.reason || JSON.stringify(error);
-        const code = error?.code;
+      if (typeof error === 'string') return error;
+      
+      // Check for common error messages
+      const errorString = error?.message || error?.reason || JSON.stringify(error);
+      const code = error?.code;
 
-        // Add MetaMask specific error cases
-        if (code === 'ACTION_REJECTED' || 
-            errorString.includes('user rejected') || 
-            errorString.includes('User denied')) {
-            return "Transaction cancelled by user";
-        }
-        
-        // Existing error cases
-        if (errorString.includes('Insufficient WETH balance')) {
-            return "Cannot borrow more than deposit amount";
-        }
-        if (errorString.includes('Cannot withdraw more than')) {
-            return "Cannot withdraw more than deposited amount";
-        }
-        if (errorString.includes('Cannot repay more than')) {
-            return "Cannot repay more than borrowed amount";
-        }
-        if (errorString.includes('Insufficient collateral')) {
-            return "Insufficient collateral for this action";
-        }
-        if (errorString.includes('Unhealthy position')) {
-            return "Position would become unhealthy after this action";
-        }
-        if (errorString.includes('Cannot borrow more than')) {
-            return errorString;
-        }
+      // Add MetaMask specific error cases
+      if (code === 'ACTION_REJECTED' || 
+          errorString.includes('user rejected') || 
+          errorString.includes('User denied')) {
+          return "Transaction cancelled by user";
+      }
+      
+      // Existing error cases
+      if (errorString.includes('Insufficient WETH balance')) {
+          return "Cannot borrow more than deposit amount";
+      }
+      if (errorString.includes('Cannot withdraw more than')) {
+          return "Cannot withdraw more than deposited amount";
+      }
+      if (errorString.includes('Cannot repay more than')) {
+          return "Cannot repay more than borrowed amount";
+      }
+      if (errorString.includes('Insufficient collateral')) {
+          return "Insufficient collateral for this action";
+      }
+      if (errorString.includes('Unhealthy position')) {
+          return "Position would become unhealthy after this action";
+      }
+      if (errorString.includes('Cannot borrow more than')) {
+          return errorString;
+      }
+      
+      // Add specific withdraw error cases
+      if (errorString.includes('Cannot withdraw collateral') || 
+          errorString.includes('active borrow') || 
+          errorString.includes('outstanding loan') ||
+          errorString.includes('repay your loan')) {
+          return "Cannot withdraw collateral while you have an outstanding loan. Please repay your borrow amount first.";
+      }
+      
+      // Check for other withdraw-related errors that might come from the contract
+      if (errorString.includes('withdraw') && 
+          (errorString.includes('borrow') || errorString.includes('loan'))) {
+          return "Withdrawal failed: You need to repay your borrowed amount before withdrawing collateral.";
+      }
 
-        // common MetaMask errors
-        if (errorString.includes('insufficient funds')) {
-            return "Insufficient ETH for gas fees";
-        }
-        if (errorString.includes('nonce too high')) {
-            return "Transaction error: Please refresh the page and try again";
-        }
-        if (errorString.includes('gas required exceeds')) {
-            return "Transaction would fail: Gas estimation failed";
-        }
-        
-        // Default error message
-        return "Transaction failed. Please try again.";
-    };
+      // common MetaMask errors
+      if (errorString.includes('insufficient funds')) {
+          return "Insufficient ETH for gas fees";
+      }
+      if (errorString.includes('nonce too high')) {
+          return "Transaction error: Please refresh the page and try again";
+      }
+      if (errorString.includes('gas required exceeds')) {
+          return "Transaction would fail: Gas estimation failed";
+      }
+      
+      // Default error message
+      return "Transaction failed. Please try again.";
+  };
 
   const handleDeposit = async () => {
     if (!provider || !depositAmount || !wethAddress) return;
@@ -475,18 +489,27 @@ interface SuccessMessageDetails {
       if (parseFloat(withdrawAmount) > parseFloat(ethers.utils.formatEther(position.depositAmount))) {
         throw new Error("Cannot withdraw more than deposited amount");
       }
+      
+      // Check if user has an outstanding loan
+      if (!position.borrowAmount.isZero()) {
+        const currentBorrowAmount = await lendingProtocol.getCurrentBorrowAmount(wethAddress, account);
+        if (currentBorrowAmount.gt(0)) {
+          // User has an active loan, prevent withdrawal
+          throw new Error("Cannot withdraw collateral while you have an outstanding loan. Please repay your borrow amount first.");
+        }
+      }
   
       const tx = await lendingProtocol.withdraw(
         wethAddress,
         parseEther(withdrawAmount)
       );
       const receipt = await tx.wait();
-
+  
       logAction('WITHDRAW_COMPLETED', {
         amount: withdrawAmount,
         txHash: receipt.transactionHash
       });
-
+  
       await loadUserPosition(account, provider);
       await loadBalances(); 
       setWithdrawAmount('');
