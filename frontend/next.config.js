@@ -28,7 +28,6 @@ const nextConfig = {
       exclude: /node_modules/,
     });
 
-    // Add resolver for TypeChain imports
     config.resolve.alias = {
       ...config.resolve.alias,
       '@typechain': path.resolve(__dirname, '../typechain'),

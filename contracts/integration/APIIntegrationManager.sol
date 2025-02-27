@@ -76,7 +76,7 @@ contract APIIntegrationManager is AccessControl, Pausable {
 
     constructor(address _lendingProtocol) {
         require(_lendingProtocol != address(0), "Invalid lending protocol address");
-        // Fix the casting
+
         lendingProtocol = EnhancedLendingProtocol(payable(_lendingProtocol));
         
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -219,7 +219,6 @@ contract APIIntegrationManager is AccessControl, Pausable {
      * @return bool indicating if data is valid
      */
     function validateCallbackData(bytes calldata data) internal pure returns (bool) {
-        // Add your validation logic here
         return data.length > 0;
     }
 

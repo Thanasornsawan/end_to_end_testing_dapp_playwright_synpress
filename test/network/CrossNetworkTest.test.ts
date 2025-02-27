@@ -212,7 +212,6 @@ describe("Cross Network Testing", function() {
                         `Interest too high for ${scenario.description}`
                     );
     
-                    // Additional checks
                     expect(totalWithInterest).to.be.gt(depositAmount);
     
                 } finally {

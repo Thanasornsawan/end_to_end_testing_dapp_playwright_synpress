@@ -23,7 +23,7 @@ export async function resetFork(blockNumber?: number) {
 
 export async function mineBlocks(count: number) {
     for (let i = 0; i < count; i++) {
-      await network.provider.send("evm_mine", []); // Add empty params array
+      await network.provider.send("evm_mine", []);
     }
 }
 
@@ -44,5 +44,5 @@ export async function simulateNodeFailure() {
 
 export async function increaseTime(seconds: number) {
     await network.provider.send("evm_increaseTime", [seconds]);
-    await network.provider.send("evm_mine", []); // Add empty params array
+    await network.provider.send("evm_mine", []); 
 }

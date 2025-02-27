@@ -15,8 +15,8 @@ async function clearDatabase() {
       prisma.event.deleteMany(),
       prisma.position.deleteMany(),
       prisma.riskMetric.deleteMany(),
-      prisma.priceData.deleteMany(),  // Fixed from piceData
-      prisma.aPIRequest.deleteMany(), // Fixed from apiRequest
+      prisma.priceData.deleteMany(),  
+      prisma.aPIRequest.deleteMany(), 
       prisma.configuration.deleteMany(),
       prisma.user.deleteMany(),
       prisma.market.deleteMany(),

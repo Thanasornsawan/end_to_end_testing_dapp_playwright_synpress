@@ -159,6 +159,13 @@ const EnhancedLendingDApp: React.FC<EnhancedLendingDAppProps> = ({
             return () => clearInterval(interval);
         }
     }, [provider, account, wethAddress, isContractsInitialized]);
+    
+    // Clear success message when account changes
+    useEffect(() => {
+        // Reset success message when account changes
+        setSuccessMessage(null);
+        setError(''); 
+    }, [account]);
 
     const initializeContract = async (
         userAddress: string,

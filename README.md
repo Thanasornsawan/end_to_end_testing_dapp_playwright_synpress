@@ -77,9 +77,16 @@ If you want to update oracle price manually, run command:
 npx hardhat run scripts/utils/updatePrice.ts --network local
 ```
 
-If you want to simulate time pass for interest rate when borrow on local network, run command:
+If you want to simulate time pass for interest rate when borrow on local network, run command: <br/>
+
+default time advance 15 seconds
 ```sh
 npx hardhat run scripts/utils/simulate-time-passage.js --network local
+```
+or simulate time advance 30 day
+
+```sh
+SIMULATE_30_DAYS=true npx hardhat run scripts/utils/simulate-time-passage.js --network local
 ```
 
 ![e2e](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/e2e.gif?raw=true)
