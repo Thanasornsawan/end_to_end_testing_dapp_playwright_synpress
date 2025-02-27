@@ -80,29 +80,27 @@ export default function Home() {
     window.location.reload();
   }, []);
 
-  // Set up Web3 listeners when the component mounts
-  // Set up Web3 listeners when the component mounts
-useEffect(() => {
-  // Flag to prevent multiple setups
-  let isMounted = true;
-  let cleanupFunction: (() => void) | null = null;
+  useEffect(() => {
+    // Flag to prevent multiple setups
+    let isMounted = true;
+    let cleanupFunction: (() => void) | null = null;
 
-  const setupListeners = async () => {
-    if (!isMounted) return;
+    const setupListeners = async () => {
+      if (!isMounted) return;
 
-    try {
-      // Setup listeners and get cleanup function
-      const cleanup = setupWeb3Listeners(
-        handleAccountsChanged, 
-        handleChainChanged
-      );
+      try {
+        // Setup listeners and get cleanup function
+        const cleanup = setupWeb3Listeners(
+          handleAccountsChanged, 
+          handleChainChanged
+        );
 
-      // Store cleanup function
-      cleanupFunction = cleanup;
-    } catch (error) {
-      console.error('Error setting up Web3 listeners:', error);
-    }
-  };
+        // Store cleanup function
+        cleanupFunction = cleanup;
+      } catch (error) {
+        console.error('Error setting up Web3 listeners:', error);
+      }
+    };
 
   // Run setup
   setupListeners();
@@ -158,141 +156,263 @@ useEffect(() => {
     }
   };
 
-  useEffect(() => {
-    if (!apiManager || !provider) return;
+useEffect(() => {
+  if (!apiManager || !provider) return;
 
-    console.log('Setting up event listeners from block:', lastProcessedBlock);
-    let isCleanedUp = false;
-    const processingTxs = new Map();
-    const processQueue = new Map();
+  console.log('Setting up event listeners from block:', lastProcessedBlock);
+  let isCleanedUp = false;
+  const processingTxs = new Map();
+  const processQueue = new Map();
 
-    const setupContractListeners = async () => {
-      if (isCleanedUp) return;
+  const setupContractListeners = async () => {
+    if (isCleanedUp) return;
 
-      try {
-        const { lendingProtocol } = await getContracts(provider);
-        console.log('Setting up listeners for contracts:', {
-          apiManager: apiManager.address,
-          lendingProtocol: lendingProtocol.address
+    try {
+      const { lendingProtocol } = await getContracts(provider);
+      console.log('Setting up listeners for contracts:', {
+        apiManager: apiManager.address,
+        lendingProtocol: lendingProtocol.address
+      });
+
+      // Remove existing listeners first
+      lendingProtocol.removeAllListeners();
+      apiManager.removeAllListeners();
+
+      // Helper function to process standard events with block number check
+      const processEvent = async (
+        eventName: string, 
+        token: string, 
+        user: string, 
+        amount: ethers.BigNumber, 
+        event: any
+      ) => {
+        // Skip if event is from an old block
+        if (event.blockNumber <= lastProcessedBlock) {
+          console.log(`Skipping old event from block ${event.blockNumber}:`, event.transactionHash);
+          return;
+        }
+
+        const txHash = event.transactionHash;
+
+        // Check if already processing
+        if (processingTxs.get(txHash)) {
+          console.log(`Skipping duplicate ${eventName} event:`, txHash);
+          return;
+        }
+
+        // Update last processed block
+        lastProcessedBlock = Math.max(lastProcessedBlock, event.blockNumber);
+
+        // Debounce processing
+        if (processQueue.has(txHash)) {
+          clearTimeout(processQueue.get(txHash));
+        }
+
+        const timeoutId = setTimeout(async () => {
+          if (isCleanedUp) return;
+
+          try {
+            // Mark as processing
+            processingTxs.set(txHash, true);
+
+            console.log(`Processing ${eventName} event:`, {
+              token,
+              user,
+              amount: amount.toString(),
+              txHash,
+              blockNumber: event.blockNumber
+            });
+
+            await logUserActivity(
+              user,
+              eventName.toUpperCase(),
+              ethers.utils.formatEther(amount),
+              new Date(),
+              txHash,
+              event.blockNumber,
+              token
+            );
+          } catch (error) {
+            console.error(`Failed to log ${eventName}:`, error);
+          } finally {
+            // Clear processing status
+            processingTxs.delete(txHash);
+            processQueue.delete(txHash);
+          }
+        }, 500); // 500ms debounce
+
+        processQueue.set(txHash, timeoutId);
+      };
+
+    const processLiquidateEvent = async (
+      liquidator: string,
+      borrower: string,
+      token: string, 
+      amount: ethers.BigNumber,
+      collateralToSeize: ethers.BigNumber,
+      event: any
+    ) => {
+      console.log('processLiquidateEvent called with:', {
+        liquidator,
+        borrower,
+        token,
+        amount: amount ? amount.toString() : 'undefined',
+        collateralToSeize: collateralToSeize ? collateralToSeize.toString() : 'undefined',
+        event: event ? {
+          blockNumber: event.blockNumber,
+          transactionHash: event.transactionHash
+        } : 'undefined'
+      });
+
+      // Perform basic validation
+      if (!liquidator || !borrower || !token || !amount || !collateralToSeize || !event) {
+        console.error('Liquidate event missing required parameters', {
+          hasLiquidator: !!liquidator,
+          hasBorrower: !!borrower,
+          hasToken: !!token,
+          hasAmount: !!amount,
+          hasCollateralToSeize: !!collateralToSeize,
+          hasEvent: !!event
         });
+        return;
+      }
 
-        // Remove existing listeners first
-        lendingProtocol.removeAllListeners();
-        apiManager.removeAllListeners();
+      // Skip if event is from an old block
+      if (event.blockNumber <= lastProcessedBlock) {
+        console.log(`Skipping old liquidate event from block ${event.blockNumber}:`, event.transactionHash);
+        return;
+      }
 
-        // Helper function to process events with block number check
-        const processEvent = async (
-          eventName: string, 
-          token: string, 
-          user: string, 
-          amount: ethers.BigNumber, 
-          event: any
-        ) => {
-          // Skip if event is from an old block
-          if (event.blockNumber <= lastProcessedBlock) {
-            console.log(`Skipping old event from block ${event.blockNumber}:`, event.transactionHash);
-            return;
+      const txHash = event.transactionHash;
+
+      // Check if already processing
+      if (processingTxs.get(txHash)) {
+        console.log(`Skipping duplicate liquidate event:`, txHash);
+        return;
+      }
+
+      // Update last processed block
+      lastProcessedBlock = Math.max(lastProcessedBlock, event.blockNumber);
+
+      // Debounce processing
+      if (processQueue.has(txHash)) {
+        clearTimeout(processQueue.get(txHash));
+      }
+
+      const timeoutId = setTimeout(async () => {
+        if (isCleanedUp) return;
+
+        try {
+          // Mark as processing
+          processingTxs.set(txHash, true);
+
+          console.log(`Processing LIQUIDATE event:`, {
+            liquidator,
+            borrower,
+            token,
+            amount: amount.toString(),
+            collateralToSeize: collateralToSeize.toString(),
+            txHash,
+            blockNumber: event.blockNumber
+          });
+
+          try {
+            // Log for liquidator (the one performing the liquidation)
+            console.log('Logging activity for liquidator:', liquidator);
+            await logUserActivity(
+              liquidator,
+              'LIQUIDATE',
+              ethers.utils.formatEther(amount),
+              new Date(),
+              txHash,
+              event.blockNumber,
+              token
+            );
+            console.log('Successfully logged liquidator activity');
+          } catch (liquidatorLogError) {
+            console.error('Failed to log liquidator activity:', liquidatorLogError);
           }
 
-          const txHash = event.transactionHash;
+          try {
+            // Log for borrower (the one being liquidated)
+            console.log('Logging activity for borrower:', borrower);
+            await logUserActivity(
+              borrower,
+              'LIQUIDATED',  // Different event type for the borrower
+              ethers.utils.formatEther(amount),
+              new Date(),
+              txHash,
+              event.blockNumber,
+              token
+            );
+            console.log('Successfully logged borrower activity');
+          } catch (borrowerLogError) {
+            console.error('Failed to log borrower activity:', borrowerLogError);
+          }
+        } catch (error) {
+          console.error('Failed to log liquidate event:', error);
+        } finally {
+          // Clear processing status
+          processingTxs.delete(txHash);
+          processQueue.delete(txHash);
+        }
+      }, 500); // 500ms debounce
 
-          // Check if already processing
-          if (processingTxs.get(txHash)) {
-            console.log(`Skipping duplicate ${eventName} event:`, txHash);
+      processQueue.set(txHash, timeoutId);
+    };
+
+      // Set up event listeners
+      lendingProtocol.on('Deposit', async (token, user, amount, event) => {
+        await processEvent('DEPOSIT', token, user, amount, event);
+      });
+
+      lendingProtocol.on('Withdraw', async (token, user, amount, event) => {
+        await processEvent('WITHDRAW', token, user, amount, event);
+      });
+
+      lendingProtocol.on('Borrow', async (token, user, amount, interestIndex, event) => {
+        await processEvent('BORROW', token, user, amount, event);
+      });
+
+      lendingProtocol.on('Repay', async (token, user, amount, interestPaid, event) => {
+        await processEvent('REPAY', token, user, amount, event);
+      });
+
+      // Use the specific Liquidate handler
+      lendingProtocol.on('Liquidate', async (liquidator, borrower, token, amount, collateralToSeize, event) => {
+        await processLiquidateEvent(liquidator, borrower, token, amount, collateralToSeize, event);
+      });
+
+      // Market data event with block number check
+      apiManager.on('MarketDataUpdated', 
+        async (poolId, timestamp, totalLiquidity, utilizationRate, ipfsHash, event) => {
+          if (isCleanedUp) return;
+          
+          // Skip if event is from an old block
+          if (event.blockNumber <= lastProcessedBlock) {
+            console.log(`Skipping old market data event from block ${event.blockNumber}`);
             return;
           }
 
           // Update last processed block
           lastProcessedBlock = Math.max(lastProcessedBlock, event.blockNumber);
 
-          // Debounce processing
-          if (processQueue.has(txHash)) {
-            clearTimeout(processQueue.get(txHash));
+          try {
+            await updateMarketData(
+              poolId,
+              ethers.utils.formatEther(totalLiquidity),
+              utilizationRate.toString(),
+              new Date(timestamp.toNumber() * 1000)
+            );
+          } catch (error) {
+            console.error('Failed to update market data:', error);
           }
+      });
 
-          const timeoutId = setTimeout(async () => {
-            if (isCleanedUp) return;
-
-            try {
-              // Mark as processing
-              processingTxs.set(txHash, true);
-
-              console.log(`Processing ${eventName} event:`, {
-                token,
-                user,
-                amount: amount.toString(),
-                txHash,
-                blockNumber: event.blockNumber
-              });
-
-              await logUserActivity(
-                user,
-                eventName.toUpperCase(),
-                ethers.utils.formatEther(amount),
-                new Date(),
-                txHash,
-                event.blockNumber,
-                token
-              );
-            } catch (error) {
-              console.error(`Failed to log ${eventName}:`, error);
-            } finally {
-              // Clear processing status
-              processingTxs.delete(txHash);
-              processQueue.delete(txHash);
-            }
-          }, 500); // 500ms debounce
-
-          processQueue.set(txHash, timeoutId);
-        };
-
-        // Set up event listeners
-        lendingProtocol.on('Deposit', async (token, user, amount, event) => {
-          await processEvent('DEPOSIT', token, user, amount, event);
-        });
-
-        lendingProtocol.on('Withdraw', async (token, user, amount, event) => {
-          await processEvent('WITHDRAW', token, user, amount, event);
-        });
-
-        lendingProtocol.on('Borrow', async (token, user, amount, interestIndex, event) => {
-          await processEvent('BORROW', token, user, amount, event);
-        });
-
-        lendingProtocol.on('Repay', async (token, user, amount, interestPaid, event) => {
-          await processEvent('REPAY', token, user, amount, event);
-        });
-
-        // Market data event with block number check
-        apiManager.on('MarketDataUpdated', 
-          async (poolId, timestamp, totalLiquidity, utilizationRate, ipfsHash, event) => {
-            if (isCleanedUp) return;
-            
-            // Skip if event is from an old block
-            if (event.blockNumber <= lastProcessedBlock) {
-              console.log(`Skipping old market data event from block ${event.blockNumber}`);
-              return;
-            }
-
-            // Update last processed block
-            lastProcessedBlock = Math.max(lastProcessedBlock, event.blockNumber);
-
-            try {
-              await updateMarketData(
-                poolId,
-                ethers.utils.formatEther(totalLiquidity),
-                utilizationRate.toString(),
-                new Date(timestamp.toNumber() * 1000)
-              );
-            } catch (error) {
-              console.error('Failed to update market data:', error);
-            }
-        });
-
-      } catch (error) {
-        console.error('Error setting up contract listeners:', error);
-      }
-    };
+    } catch (error) {
+      console.error('Error setting up contract listeners:', error);
+    }
+  };
 
     // Call setup function
     setupContractListeners();
