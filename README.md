@@ -1,13 +1,70 @@
-# E2E_blockchain_testing
+# 🏦 End-to-End Testing of a DeFi Lending Protocol with Synpress & Playwright
 
-## Topic DApp Web3 testing (Defi) with Synpress V4 and Playwright
+This repository provides a complete **end-to-end (E2E) testing setup** for a **DeFi lending smart contract** using **Synpress v4, Playwright, and Hardhat**. 
+<br/>
+It covers:
+<br/>
+✅ Smart contract deployment & interaction (Hardhat)  <br/>
+✅ Automated testing with **Synpress + Playwright** (MetaMask interaction included!)  <br/>
+✅ Local and **mainnet fork testing**  <br/>
+✅ **Database integration testing** with PostgreSQL (Prisma ORM)  <br/>
+<br/>
+This project is perfect for **QA engineers, blockchain testers, and developers** who want to learn **end-to-end blockchain testing** using real-world tools. 🚀 <br/>
 
-Command to setup Metamask wallet:
-```sh
+## ⭐ Why Use This Repo?
+- **Hands-on Learning:** Learn how to test DeFi smart contracts with real tools.
+- **Complete Setup:** Covers both frontend and backend testing, including **MetaMask interaction**.
+- **Mainnet Forking:** Test against real Ethereum mainnet data using **Alchemy & Hardhat**.
+- **Database Testing:** Use **PostgreSQL + Prisma** for off-chain integration testing.
+
+🔹 If you find this repo useful, **please ⭐ star it** to support the project!
+
+### 🛠️ How to Setup project 🛠️
+
+1. Install dependencies:
+
+1.1 Install dependencies for Backend (smart contract):
+```bash
+npm install
+```
+1.2 Install dependencies for Frontend (react + nexjs):
+```bash
+cd frontend & npm install
+```
+1.3 Install dependencies for Synpress and Playwright:
+```bash
+cd web3_test & npm install
+```
+
+2. Set up environment variables:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your configuration:
+
+3. Create wallet setup cache:
+
+```bash
+cd web3_test
 npx synpress wallet-setup
 ```
 
-Command to run test cases with Synpress on hardhat local network
+4. Run Tests in Headed or Headless mode
+
+```bash
+npm run test:playwright:headful
+```
+
+or
+
+```bash
+npm run test:playwright:headless
+```
+
+### How to run project locally (DApp test cases)
+
 ```sh
 # Terminal 1: Start local network
 npx hardhat node
@@ -32,7 +89,9 @@ If you want to simulate time pass for interest rate when borrow on local network
 npx hardhat run scripts/utils/simulate-time-passage.js --network local
 ```
 
-## Topic Node Tesing on smart contract (Defi)
+![e2e](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/e2e.gif?raw=true)
+
+### Topic Node Tesing on smart contract (Defi)
 
 Refer blog https://medium.com/coinmonks/qa-blockchain-testing-smart-contract-network-performance-with-hardhat-d01e99e331e7
 
@@ -45,7 +104,7 @@ npx hardhat node --fork https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY
 npm run test:main_network_fork_report
 ```
 
-## For DB setup (for integration testing with off-chain data)
+### For DB setup (for integration testing with off-chain data)
 
 **Install dependencies**
 ```sh
@@ -87,3 +146,10 @@ npx ts-node test-db-connection.ts
 ```sh
 npx ts-node scripts/utils/clearDatabase.ts
 ```
+
+### References
+
+- [Playwright](https://playwright.dev/)
+- [Synpress](https://synpress.io/)
+- [MetaMask](https://metamask.io/)
+- [Hardhat](https://hardhat.org/docs)
