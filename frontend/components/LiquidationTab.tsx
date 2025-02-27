@@ -323,6 +323,9 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
         if (!provider || !selectedPositionId || !liquidationAmount || !wethAddress || !lendingProtocol) return;
         
         try {
+            // Clear any existing error message before starting
+            setError('');
+            
             // Verify the position is truly liquidatable
             const healthFactor = await lendingProtocol.getLiquidationHealthFactor(selectedPositionId);
             const formattedHealthFactor = parseFloat(ethers.utils.formatUnits(healthFactor, 4));
@@ -362,6 +365,8 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
 
             const bonusAmount = calculateLiquidationBonus(liquidationAmount);
             
+            // Clear any existing error before setting success message
+            setError('');
             setSuccessMessage({
                 type: 'text',
                 content: `Liquidation successful!\nRepaid: ${liquidationAmount} ETH\nBonus Received: ${bonusAmount} ETH`
@@ -369,6 +374,8 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
 
         } catch (error) {
             console.error('Liquidation failed:', error);
+            // Clear any existing success message before setting error
+            setSuccessMessage(null);
             setError(getSimplifiedErrorMessage(error));
         }
     };

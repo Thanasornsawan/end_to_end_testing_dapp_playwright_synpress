@@ -3,7 +3,6 @@ import { ethers } from 'ethers';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { getContracts } from '../utils/web3';
 import { EnhancedLendingProtocol } from "../../typechain/contracts/core/EnhancedLendingProtocol";
 import { MockWETH } from "../../typechain/contracts/mocks/MockWETH";
@@ -119,6 +118,9 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
         if (!provider || !borrowAmount || !wethAddress || !wethContract) return;
         setLoading(true);
         setError('');
+        // Clear any previous success message
+        setSuccessMessage(null);
+        
         try {
             logAction('BORROW_STARTED', { amount: borrowAmount });
             const { lendingProtocol } = await getContracts(provider);
@@ -174,10 +176,18 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
             await loadUserPosition(account, provider);
             await loadBalances();
             setBorrowAmount('');
+            
+            // Show success message
+            setError(''); // Clear any existing error
+            setSuccessMessage({
+                type: 'text',
+                content: `Successfully borrowed ${borrowAmount} ETH`
+            });
 
         } catch (err) {
             const errorMessage = getSimplifiedErrorMessage(err);
             logAction('BORROW_FAILED', { error: err });
+            setSuccessMessage(null); // Clear any existing success message
             setError(errorMessage);
         }
         setLoading(false);
@@ -567,89 +577,89 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
         if (!showDiagnostics) return null;
         
         return (
-          <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200" data-testid="interest-diagnostics-panel">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-medium text-slate-800">Interest Diagnostics</h3>
-              <button 
-                onClick={() => setShowDiagnostics(false)}
-                className="text-sm text-slate-500 hover:text-slate-700"
-                data-testid="close-interest-diagnostics"
-              >
-                Close
-              </button>
-            </div>
-            
-            {diagnosticsLoading ? (
-              <p className="text-center py-4">Loading interest data...</p>
-            ) : (
-              <>
-                {interestDiagnostics && (
-                  <div className="mb-4 space-y-2 text-sm">
-                    <h4 className="font-medium">Timing Information</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <p className="text-slate-600">Last Update:</p>
-                      <p data-testid="last-update-time">{interestDiagnostics.lastUpdate}</p>
-                      
-                      <p className="text-slate-600">Current Time:</p>
-                      <p data-testid="current-time">{interestDiagnostics.currentTime}</p>
-                      
-                      <p className="text-slate-600">Time Elapsed:</p>
-                      <p data-testid="time-elapsed">{interestDiagnostics.timeElapsed}</p>
-                      
-                      <p className="text-slate-600">5-min Intervals:</p>
-                      <p data-testid="intervals-elapsed">{interestDiagnostics.intervalsElapsed}</p>
-                      
-                      <p className="text-slate-600">Partial Interval:</p>
-                      <p data-testid="partial-interval">{interestDiagnostics.partialInterval}</p>
-                    </div>
-                    
-                    <h4 className="font-medium mt-3">Interest Indices</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <p className="text-slate-600">Current Index:</p>
-                      <p data-testid="current-index">{interestDiagnostics.currentIndex}</p>
-                      
-                      <p className="text-slate-600">Estimated New:</p>
-                      <p data-testid="estimated-new-index">{interestDiagnostics.estimatedNewIndex}</p>
-                      
-                      <p className="text-slate-600">Index Change:</p>
-                      <p data-testid="index-change">{interestDiagnostics.indexChange}</p>
-                    </div>
-                  </div>
-                )}
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200" data-testid="interest-diagnostics-panel">
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-medium text-slate-800">Interest Diagnostics</h3>
+                    <button 
+                        onClick={() => setShowDiagnostics(false)}
+                        className="text-sm text-slate-500 hover:text-slate-700"
+                        data-testid="close-interest-diagnostics"
+                    >
+                        Close
+                    </button>
+                </div>
                 
-                {detailedInterest && (
-                  <div className="space-y-2 text-sm">
-                    <h4 className="font-medium">Accrued Interest</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <p className="text-slate-600">Principal:</p>
-                      <p data-testid="principal-amount">{detailedInterest.principal} ETH</p>
-                      
-                      <p className="text-slate-600">Current Amount:</p>
-                      <p data-testid="current-amount">{detailedInterest.currentAmount} ETH</p>
-                      
-                      <p className="text-slate-600">Interest Accrued:</p>
-                      <p 
-                        className={parseFloat(detailedInterest.interestAccrued) > 0 ? "text-amber-600 font-medium" : ""}
-                        data-testid="interest-accrued-value"
-                      >
-                        {detailedInterest.interestAccrued} ETH
-                      </p>
-                      
-                      <p className="text-slate-600">Effective Rate:</p>
-                      <p data-testid="effective-rate">{detailedInterest.effectiveRate}</p>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="mt-4">
-                  <Button 
-                    onClick={fetchInterestDiagnostics}
-                    variant="outline" 
-                    size="sm"
-                    className="w-full"
-                    data-testid="refresh-interest-data-button"
-                  >
-                    Refresh Interest Data
+                {diagnosticsLoading ? (
+                    <p className="text-center py-4">Loading interest data...</p>
+                ) : (
+                    <>
+                        {interestDiagnostics && (
+                            <div className="mb-4 space-y-2 text-sm">
+                                <h4 className="font-medium">Timing Information</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <p className="text-slate-600">Last Update:</p>
+                                    <p data-testid="last-update-time">{interestDiagnostics.lastUpdate}</p>
+                                    
+                                    <p className="text-slate-600">Current Time:</p>
+                                    <p data-testid="current-time">{interestDiagnostics.currentTime}</p>
+                                    
+                                    <p className="text-slate-600">Time Elapsed:</p>
+                                    <p data-testid="time-elapsed">{interestDiagnostics.timeElapsed}</p>
+                                    
+                                    <p className="text-slate-600">5-min Intervals:</p>
+                                    <p data-testid="intervals-elapsed">{interestDiagnostics.intervalsElapsed}</p>
+                                    
+                                    <p className="text-slate-600">Partial Interval:</p>
+                                    <p data-testid="partial-interval">{interestDiagnostics.partialInterval}</p>
+                                </div>
+                                
+                                <h4 className="font-medium mt-3">Interest Indices</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <p className="text-slate-600">Current Index:</p>
+                                    <p data-testid="current-index">{interestDiagnostics.currentIndex}</p>
+                                    
+                                    <p className="text-slate-600">Estimated New:</p>
+                                    <p data-testid="estimated-new-index">{interestDiagnostics.estimatedNewIndex}</p>
+                                    
+                                    <p className="text-slate-600">Index Change:</p>
+                                    <p data-testid="index-change">{interestDiagnostics.indexChange}</p>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {detailedInterest && (
+                            <div className="space-y-2 text-sm">
+                                <h4 className="font-medium">Accrued Interest</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <p className="text-slate-600">Principal:</p>
+                                    <p data-testid="principal-amount">{detailedInterest.principal} ETH</p>
+                                    
+                                    <p className="text-slate-600">Current Amount:</p>
+                                    <p data-testid="current-amount">{detailedInterest.currentAmount} ETH</p>
+                                    
+                                    <p className="text-slate-600">Interest Accrued:</p>
+                                    <p 
+                                        className={parseFloat(detailedInterest.interestAccrued) > 0 ? "text-amber-600 font-medium" : ""}
+                                        data-testid="interest-accrued-value"
+                                    >
+                                        {detailedInterest.interestAccrued} ETH
+                                    </p>
+                                    
+                                    <p className="text-slate-600">Effective Rate:</p>
+                                    <p data-testid="effective-rate">{detailedInterest.effectiveRate}</p>
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div className="mt-4">
+                            <Button 
+                                onClick={fetchInterestDiagnostics}
+                                variant="outline" 
+                                size="sm"
+                                className="w-full"
+                                data-testid="refresh-interest-data-button"
+                            >
+                                Refresh Interest Data
                             </Button>
                         </div>
                     </>
@@ -745,6 +755,5 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
         </div>
     );
 };
-
 
 export default BorrowRepayTab;
