@@ -27,6 +27,12 @@ This project is perfect for **QA engineers, blockchain testers, and developers**
 ```bash
 npm install
 ```
+
+Complie all the smart contract to your local project:
+```bash
+npx hardhat compile
+```
+
 1.2 Install dependencies for Frontend (react + nexjs):
 ```bash
 cd frontend & npm install
@@ -44,7 +50,53 @@ cp .env.example .env
 
 Edit `.env` with your configuration:
 
-3. Create wallet setup cache:
+3. database setup (off-chain data for tracking events):<br/>
+
+3.1 Install dependencies:
+```sh
+npm install @prisma/client
+npm install prisma --save-dev
+```
+3.2 Start postgresql db with Prisma on docker compose:
+```sh
+docker-compose up -d
+```
+
+![db4](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set4.png?raw=true)
+
+3.3 Push schema to database:<br/>
+Creates the tables according to your Prisma schema:
+
+```sh
+npx prisma db push
+```
+![db2](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set2.png?raw=true)
+
+Generate client<br/>
+Generates the TypeScript client for your application
+```sh
+npx prisma generate
+```
+3.4 Check database tables:
+```sh
+npx prisma db pull
+```
+
+![db3](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set3.png?raw=true)
+
+3.5 Test db connection:
+```sh
+npx ts-node test-db-connection.ts
+```
+
+![db1](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set1.png?raw=true)
+
+Optional: Delete all db data
+```sh
+npx ts-node scripts/utils/clearDatabase.ts
+```
+
+4. Create wallet setup cache:
 
 ```bash
 cd web3_test
@@ -93,8 +145,6 @@ SIMULATE_30_DAYS=true npx hardhat run scripts/utils/simulate-time-passage.js --n
 
 ### Topic Node Tesing on smart contract (Defi)
 
-Refer blog https://medium.com/coinmonks/qa-blockchain-testing-smart-contract-network-performance-with-hardhat-d01e99e331e7
-
 Command to run all test cases (refer backend test cases folder ./test/network)
 ```sh
 # Terminal 1: Start local fork
@@ -103,53 +153,12 @@ npx hardhat node --fork https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY
 # Terminal 2: Run tests
 npm run test:main_network_fork_report
 ```
-
-### For DB setup (for integration testing with off-chain data)
-
-**Install dependencies**
-```sh
-npm install @prisma/client
-npm install prisma --save-dev
-```
-**Start postgresql db with Prisma on docker compose**
-```sh
-docker-compose up -d
-```
-
-![db4](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set4.png?raw=true)
-**Push schema to database**
-Creates the tables according to your Prisma schema
-```sh
-npx prisma db push
-```
-![db2](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set2.png?raw=true)
-
-**Generate client**
-Generates the TypeScript client for your application
-```sh
-npx prisma generate
-```
-**Check database tables**
-```sh
-npx prisma db pull
-```
-
-![db3](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set3.png?raw=true)
-**Test db connection**
-```sh
-npx ts-node test-db-connection.ts
-```
-
-![db1](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/db_set1.png?raw=true)
-
-**Delete all db data**
-```sh
-npx ts-node scripts/utils/clearDatabase.ts
-```
-
 ### References
 
 - [Playwright](https://playwright.dev/)
 - [Synpress](https://synpress.io/)
 - [MetaMask](https://metamask.io/)
 - [Hardhat](https://hardhat.org/docs)
+
+### Blog
+[QA Blockchain Testing: Smart Contract & Network Performance with Hardhat](https://medium.com/coinmonks/qa-blockchain-testing-smart-contract-network-performance-with-hardhat-d01e99e331e7)
