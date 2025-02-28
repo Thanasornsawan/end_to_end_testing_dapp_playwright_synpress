@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
-    "@synthetixio/synpress": "^4.0.4",
+    "@synthetixio/synpress": "^4.0.8",
     "@synthetixio/synpress-tsconfig": "^0.0.7",
     "@types/node": "^22.13.5",
     "typescript": "^5.0.4"
