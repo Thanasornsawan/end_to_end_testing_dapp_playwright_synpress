@@ -25,7 +25,7 @@ export async function connectWallet(): Promise<ethers.providers.Web3Provider | n
         return null;
       }
 
-      console.log('Connected with account:', accounts[0]);
+      // Reduce logging - don't log every connection
       return provider;
     }
     return null;
@@ -76,32 +76,134 @@ export async function disconnectWallet(): Promise<void> {
 }
   
 export async function getContracts(provider: ethers.providers.Web3Provider) {
-    const signer = provider.getSigner();
-    const network = await provider.getNetwork();
-    const addresses = getContractAddresses(network.chainId);
+  const signer = provider.getSigner();
+  const network = await provider.getNetwork();
   
-    const lendingProtocol = EnhancedLendingProtocol__factory.connect(
-      addresses.enhancedLendingProtocol,
-      signer
-    );
+  const isOptimism = isOptimismNetwork(network.chainId);
+  const networkName = isOptimism ? 'optimism' : undefined;
+  
+  // Reduce logging - only log this on network change, not on every contract call
+  // console.log(`Getting contracts for network: ${networkName || 'local'} (chainId: ${network.chainId})`);
+  
+  const addresses = getContractAddresses(network.chainId, networkName);
 
-    const apiManager = APIIntegrationManager__factory.connect(
-      addresses.apiManager,
-      signer
-    );
+  const lendingProtocol = EnhancedLendingProtocol__factory.connect(
+    addresses.enhancedLendingProtocol,
+    signer
+  );
 
-    // Add price oracle initialization
-    const priceOracleAddress = await lendingProtocol.priceOracle();
-    const priceOracle = MockPriceOracle__factory.connect(
-      priceOracleAddress,
-      signer
-    );
-  
-    // Basic contract verification
-    const wethAddress = await lendingProtocol.weth();
-    const tokenConfig = await lendingProtocol.tokenConfigs(wethAddress);
-  
-    return { lendingProtocol, apiManager, priceOracle };
+  const apiManager = APIIntegrationManager__factory.connect(
+    addresses.apiManager,
+    signer
+  );
+
+  // Add price oracle initialization
+  const priceOracleAddress = await lendingProtocol.priceOracle();
+  const priceOracle = MockPriceOracle__factory.connect(
+    priceOracleAddress,
+    signer
+  );
+
+  //console.log('priceOracleAddress',  priceOracleAddress);
+
+  // Basic contract verification
+  const wethAddress = await lendingProtocol.weth();
+  const tokenConfig = await lendingProtocol.tokenConfigs(wethAddress);
+  //console.log("WETH addresses match:", wethAddress);
+  return { lendingProtocol, apiManager, priceOracle };
+}
+
+// Function to get current chain ID
+export async function getCurrentChainId(): Promise<number | null> {
+  try {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+      return parseInt(chainIdHex, 16);
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting chain ID:', error);
+    return null;
+  }
+}
+
+// Improved function to check if connected to Optimism network
+export function isOptimismNetwork(chainId: number, networkName?: string): boolean {
+  // If networkName is provided and indicates Optimism, return true
+  if (networkName && networkName.toLowerCase().includes('optimism')) {
+    return true;
+  }
+
+  // Check based on chain ID (for hardhat local networks)
+  // We're checking if this is our optimism fork network (which could have the same chainId as local)
+  return chainId === CHAIN_IDS.optimismFork;
+}
+
+export async function switchNetwork(targetChainId: number): Promise<boolean> {
+  try {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      // Format chain ID as hex
+      const chainIdHex = `0x${targetChainId.toString(16)}`;
+      
+      try {
+        // Try to switch to the network
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }],
+        });
+        
+        // Wait a short moment to allow network switch to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        return true;
+      } catch (switchError: any) {
+        // This error code indicates that the chain has not been added to MetaMask.
+        if (switchError.code === 4902) {
+          // For Optimism fork networks, add them to MetaMask
+          if (targetChainId === CHAIN_IDS.optimismFork) {
+            try {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [
+                  {
+                    chainId: chainIdHex,
+                    chainName: 'Local Optimism',
+                    nativeCurrency: {
+                      name: 'Ether',
+                      symbol: 'ETH',
+                      decimals: 18,
+                    },
+                    rpcUrls: ['http://localhost:8546'],
+                    blockExplorerUrls: [],
+                  },
+                ],
+              });
+              
+              // After adding, try switching again
+              await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: chainIdHex }],
+              });
+              
+              // Wait a short moment to allow network switch to complete
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              return true;
+            } catch (addError) {
+              console.error('Error adding network to MetaMask:', addError);
+              return false;
+            }
+          }  
+        }
+        console.error('Failed to switch network:', switchError);
+        return false;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Error switching network:', error);
+    return false;
+  }
 }
 
 export function formatEther(value: ethers.BigNumber): string {
@@ -114,10 +216,10 @@ export function parseEther(value: string): ethers.BigNumber {
 
 export async function checkNetwork(provider: ethers.providers.Web3Provider) {
   const network = await provider.getNetwork();
-  const desiredChainId = CHAIN_IDS.local; // Default to local network
-
-  if (network.chainId !== desiredChainId) {
-    throw new Error(`Please connect to the correct network. ChainId: ${desiredChainId}`);
+  
+  // Check if chainId is either local or optimismFork
+  if (network.chainId !== CHAIN_IDS.local && network.chainId !== CHAIN_IDS.optimismFork) {
+    throw new Error(`Please connect to a supported network. Current chainId: ${network.chainId}`);
   }
 }
 
@@ -177,12 +279,12 @@ export function setupWeb3Listeners(
 ) {
   if (typeof window !== 'undefined' && window.ethereum) {
     const handleAccountsChanged = (accounts: string[]) => {
-      console.log('Accounts changed listener triggered:', accounts);
+      // Reduce logging to only critical changes
       onAccountsChanged(accounts);
     };
 
     const handleChainChanged = (chainId: string) => {
-      console.log('Chain changed listener triggered:', chainId);
+      // Reduce logging to only critical changes
       onChainChanged(chainId);
     };
 

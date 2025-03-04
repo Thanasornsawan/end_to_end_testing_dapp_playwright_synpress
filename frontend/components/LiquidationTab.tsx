@@ -18,6 +18,7 @@ interface LiquidationTabProps {
         type: 'text' | 'details';
         content: string | any;
     } | null) => void;
+    setTransactionInProgress: (inProgress: boolean) => void;
 }
 
 const LiquidationTab: React.FC<LiquidationTabProps> = ({
@@ -28,7 +29,8 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
     isContractsInitialized,
     setError,
     getSimplifiedErrorMessage,
-    setSuccessMessage
+    setSuccessMessage,
+    setTransactionInProgress
 }) => {
     // Make the input element controlled by both state and a direct ref
     const inputRef = useRef<HTMLInputElement>(null);
@@ -319,9 +321,10 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
         // Define constants to match smart contract
         const LIQUIDATION_CLOSE_FACTOR = 5000; // 50% in basis points
         const BASIS_POINTS = 10000; // Standard basis points representation
-    
-        if (!provider || !selectedPositionId || !liquidationAmount || !wethAddress || !lendingProtocol) return;
         
+        if (!provider || !selectedPositionId || !liquidationAmount || !wethAddress || !lendingProtocol) return;
+        // Set transaction in progress to pause price fetching
+        setTransactionInProgress(true);
         try {
             // Clear any existing error message before starting
             setError('');
@@ -372,11 +375,32 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
                 content: `Liquidation successful!\nRepaid: ${liquidationAmount} ETH\nBonus Received: ${bonusAmount} ETH`
             });
 
+            // Add manual logging call to the database
+            const { logUserActivity } = await import('../../services/database');
+            // Get current chain ID
+            const network = await provider.getNetwork();
+            const currentChainId = network.chainId;
+
+            // Log for liquidator (the one performing the liquidation)
+            await logUserActivity(
+                account,
+                'LIQUIDATE',
+                liquidationAmount,
+                new Date(),
+                receipt.transactionHash,
+                receipt.blockNumber,
+                wethAddress || 'unknown',
+                currentChainId
+            );
+
         } catch (error) {
             console.error('Liquidation failed:', error);
             // Clear any existing success message before setting error
             setSuccessMessage(null);
             setError(getSimplifiedErrorMessage(error));
+        } finally {
+            // Always make sure to reset the transaction status
+            setTransactionInProgress(false);
         }
     };
     
@@ -443,7 +467,19 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
                                         ref={inputRef}
                                         type="number"
                                         value={liquidationAmount}
-                                        onChange={(e) => setLiquidationAmount(e.target.value)}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            if (value === '' || parseFloat(value) >= 0) {
+                                                setLiquidationAmount(value);
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === '-' || e.key === 'e') {
+                                                e.preventDefault();
+                                            }
+                                        }}
+                                        min="0"
+                                        step="any"
                                         placeholder="Enter ETH amount"
                                         disabled={liquidationLoading || fullyLiquidating}
                                         className="w-full p-2 border rounded"

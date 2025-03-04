@@ -59,6 +59,7 @@ interface BorrowRepayTabProps {
         error: string;
         token: string;
     }) => void;
+    setTransactionInProgress: (inProgress: boolean) => void;
 }
 
 const SuccessMessageAlert = ({ details }: { details: SuccessMessageDetails }) => (
@@ -105,7 +106,8 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
     successMessage,
     setSuccessMessage,
     balances,
-    onTransactionError
+    onTransactionError,
+    setTransactionInProgress
 }) => {
     const [borrowAmount, setBorrowAmount] = useState('');
     const [repayAmount, setRepayAmount] = useState('');
@@ -120,6 +122,8 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
         setError('');
         // Clear any previous success message
         setSuccessMessage(null);
+        // Set transaction in progress to pause price fetching
+        setTransactionInProgress(true);
         
         try {
             logAction('BORROW_STARTED', { amount: borrowAmount });
@@ -173,6 +177,22 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
                 depositedAmount: depositedAmount
             });
 
+            // Add manual logging call to the database
+            const { logUserActivity } = await import('../../services/database');
+            // Get current chain ID
+            const network = await provider.getNetwork();
+            const currentChainId = network.chainId;
+            await logUserActivity(
+                account,
+                'BORROW',
+                borrowAmount,
+                new Date(),
+                receipt.transactionHash,
+                receipt.blockNumber,
+                wethAddress || 'unknown',
+                currentChainId
+            );
+
             await loadUserPosition(account, provider);
             await loadBalances();
             setBorrowAmount('');
@@ -189,8 +209,11 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
             logAction('BORROW_FAILED', { error: err });
             setSuccessMessage(null); // Clear any existing success message
             setError(errorMessage);
+        } finally {
+            // Always make sure to reset the transaction status
+            setTransactionInProgress(false);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleRepay = async () => {
@@ -199,6 +222,8 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
         setError('');
         // Clear any previous success message
         setSuccessMessage(null);
+        // Set transaction in progress to pause price fetching
+        setTransactionInProgress(true);
         
         try {
             logAction('REPAY_STARTED', { amount: repayAmount });
@@ -337,11 +362,30 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
                 interestPaid: interestPaid,
                 txHash: receipt.transactionHash
             });
+
+            // Add manual logging call to the database
+            const { logUserActivity } = await import('../../services/database');
+            // Get current chain ID
+            const network = await provider.getNetwork();
+            const currentChainId = network.chainId;
+            await logUserActivity(
+                account,
+                'REPAY',
+                repayAmount,
+                new Date(),
+                receipt.transactionHash,
+                receipt.blockNumber,
+                wethAddress || 'unknown',
+                currentChainId
+            );
         } catch (err) {
             console.error('Repay failed:', err);
             setError(getSimplifiedErrorMessage(err));
+        } finally {
+            // Always make sure to reset the transaction status
+            setTransactionInProgress(false);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleFullRepayment = async (): Promise<void> => {
@@ -349,6 +393,8 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
         setLoading(true);
         setError('');
         setSuccessMessage(null); // Clear any existing message
+        // Set transaction in progress to pause price fetching
+        setTransactionInProgress(true);
         
         try {
             logAction('FULL_REPAY_STARTED', {});
@@ -499,12 +545,31 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
                 interestPaid: interestPaid,
                 method: hasEnoughWeth ? 'WETH_TOKENS' : 'ETH',
             });
+
+            // Add manual logging call to the database
+            const { logUserActivity } = await import('../../services/database');
+            // Get current chain ID
+            const network = await provider.getNetwork();
+            const currentChainId = network.chainId;
+            await logUserActivity(
+                account,
+                'FULL_REPAY',
+                ethers.utils.formatEther(repayAmount),
+                new Date(),
+                receipt.transactionHash,
+                receipt.blockNumber,
+                wethAddress || 'unknown',
+                currentChainId
+            );
             
         } catch (err) {
             console.error('Full repayment failed:', err);
             setError(getSimplifiedErrorMessage(err));
+        } finally {
+            // Always make sure to reset the transaction status
+            setTransactionInProgress(false);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const fetchInterestDiagnostics = async () => {
@@ -681,14 +746,26 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
             )}
             
             <div className="space-y-2">
-                <Input
-                    type="number"
-                    value={borrowAmount}
-                    onChange={(e) => setBorrowAmount(e.target.value)}
-                    placeholder="Amount to borrow"
-                    disabled={loading}
-                    data-testid="borrow-input"
-                />
+            <Input
+                type="number"
+                value={borrowAmount}
+                onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '' || parseFloat(value) >= 0) {
+                        setBorrowAmount(value);
+                    }
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === '-' || e.key === 'e') {
+                        e.preventDefault();
+                    }
+                }}
+                min="0"
+                step="any"
+                placeholder="Amount to borrow"
+                disabled={loading}
+                data-testid="borrow-input"
+            />
                 <Button 
                     onClick={handleBorrow} 
                     disabled={loading}
@@ -733,13 +810,25 @@ const BorrowRepayTab: React.FC<BorrowRepayTabProps> = ({
                     </div>
                     
                     <div className="space-y-2">
-                        <Input
-                            type="number"
-                            value={repayAmount}
-                            onChange={(e) => setRepayAmount(e.target.value)}
-                            placeholder="Enter custom repayment amount"
-                            disabled={loading}
-                        />
+                    <Input
+                        type="number"
+                        value={repayAmount}
+                        onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || parseFloat(value) >= 0) {
+                                setRepayAmount(value);
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === '-' || e.key === 'e') {
+                                e.preventDefault();
+                            }
+                        }}
+                        min="0"
+                        step="any"
+                        placeholder="Enter custom repayment amount"
+                        disabled={loading}
+                    />
                         <Button 
                             onClick={handleRepay}
                             disabled={loading}

@@ -2,16 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import type { Ethereum } from '../../types/window';
 import EnhancedLendingDApp from '../components/EnhancedLendingDApp';
-import ProtocolStatistics from '../components/ProtocolStatistics';
-import RiskMonitor from '../components/RiskMonitor';
 import { Card } from "../components/ui/card";
 import { 
   connectWallet, 
   disconnectWallet, 
   getContracts, 
   setupWeb3Listeners,
-  getCurrentMetaMaskAccount 
+  getCurrentMetaMaskAccount,
+  switchNetwork
 } from '../utils/web3';
+import { CHAIN_IDS } from '../config/contracts'; // Add this import
 import { APIIntegrationManager } from "../../typechain/contracts/integration/APIIntegrationManager";
 import { updateMarketData, logUserActivity, logFailedTransaction } from '../../services/database';
 
@@ -22,6 +22,34 @@ export default function Home() {
   const [account, setAccount] = useState<string>('');
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
   const [apiManager, setApiManager] = useState<APIIntegrationManager | null>(null);
+
+  const handleNetworkChange = async (targetChainId: number): Promise<void> => {
+    try {
+      if (!provider) return;
+      
+      console.log(`Switching to network with chainId: ${targetChainId}`);
+      
+      // Attempt to switch the network using MetaMask
+      const success = await switchNetwork(targetChainId);
+      if (!success) {
+        console.error('Failed to switch network');
+        return;
+      }
+      
+      // After successful network switch, wait a brief moment for MetaMask to update
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // The chainChanged event will handle most updates, but we help it along
+      const newProvider = new ethers.providers.Web3Provider(
+        window.ethereum as ethers.providers.ExternalProvider, "any"
+      );
+      setProvider(newProvider);
+      
+      // The rest will be handled by the chainChanged event
+    } catch (error) {
+      console.error('Network change error:', error);
+    }
+  };
 
   // Add a method to handle account changes
   const handleAccountsChanged = useCallback(async (accounts: string[]) => {
@@ -74,10 +102,36 @@ export default function Home() {
   }
   }, [account]);
 
-  // Add a method to handle chain changes
   const handleChainChanged = useCallback((chainId: string) => {
-    // Reload the page to reset the app state
-    window.location.reload();
+    console.log('Chain changed to:', chainId);
+    
+    // Convert hex chainId to number
+    const newChainId = parseInt(chainId, 16);
+    
+    // Instead of immediately reloading, we can check if it's a known network
+    if (newChainId === CHAIN_IDS.local || newChainId === CHAIN_IDS.optimismFork) {
+      // For known networks, we can just reset state and reinitialize
+      try {
+        // Create a new provider when network changes
+        const newProvider = new ethers.providers.Web3Provider(
+          window.ethereum as ethers.providers.ExternalProvider, "any"
+        );
+        
+        // Set the provider first
+        setProvider(newProvider);
+        
+        // CRITICAL: Don't immediately reset these, which causes UI flickering
+        // Instead, reconnect and let the components update naturally
+        handleWalletConnection().catch(console.error);
+      } catch (error) {
+        console.error('Error handling chain change:', error);
+        // Fallback to reloading if something goes wrong
+        window.location.reload();
+      }
+    } else {
+      // For unknown networks, reload the page
+      window.location.reload();
+    }
   }, []);
 
   useEffect(() => {
@@ -102,19 +156,19 @@ export default function Home() {
       }
     };
 
-  // Run setup
-  setupListeners();
+    // Run setup
+    setupListeners();
 
-  // Cleanup function
-  return () => {
-    isMounted = false;
-    
-    // Call the cleanup function if it exists
-    if (cleanupFunction) {
-      cleanupFunction();
-    }
-  };
-}, [handleAccountsChanged, handleChainChanged]);
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      
+      // Call the cleanup function if it exists
+      if (cleanupFunction) {
+        cleanupFunction();
+      }
+    };
+  }, [handleAccountsChanged, handleChainChanged]);
 
   const handleWalletConnection = async (): Promise<void> => {
     try {
@@ -156,29 +210,48 @@ export default function Home() {
     }
   };
 
-useEffect(() => {
-  if (!apiManager || !provider) return;
-
-  console.log('Setting up event listeners from block:', lastProcessedBlock);
-  let isCleanedUp = false;
-  const processingTxs = new Map();
-  const processQueue = new Map();
-
-  const setupContractListeners = async () => {
-    if (isCleanedUp) return;
-
-    try {
-      const { lendingProtocol } = await getContracts(provider);
-      console.log('Setting up listeners for contracts:', {
-        apiManager: apiManager.address,
-        lendingProtocol: lendingProtocol.address
-      });
-
-      // Remove existing listeners first
-      lendingProtocol.removeAllListeners();
-      apiManager.removeAllListeners();
-
-      // Helper function to process standard events with block number check
+  useEffect(() => {
+    if (!apiManager || !provider) return;
+  
+    console.log('Setting up event listeners from block:', lastProcessedBlock);
+    let isCleanedUp = false;
+    const processingTxs = new Map();
+    const processQueue = new Map();
+  
+    const setupContractListeners = async () => {
+      if (isCleanedUp) return;
+  
+      try {
+        // Try-catch each critical contract operation
+        let lendingProtocol;
+        try {
+          const contracts = await getContracts(provider);
+          lendingProtocol = contracts.lendingProtocol;
+          
+          console.log('Setting up listeners for contracts:', {
+            apiManager: apiManager.address,
+            lendingProtocol: lendingProtocol.address
+          });
+        } catch (error) {
+          console.warn('Failed to get contracts during listener setup, will retry:', error);
+          return; // Exit early, will retry on next effect cycle
+        }
+  
+        // Only proceed if we have valid contracts
+        if (!lendingProtocol || !apiManager) {
+          console.warn('Missing contracts for event listener setup');
+          return;
+        }
+  
+        try {
+          // Safely remove existing listeners
+          lendingProtocol.removeAllListeners();
+          apiManager.removeAllListeners();
+        } catch (listenerError) {
+          console.warn('Error removing listeners, proceeding anyway:', listenerError);
+        }
+  
+         // Helper function to process standard events with block number check
       const processEvent = async (
         eventName: string, 
         token: string, 
@@ -413,26 +486,33 @@ useEffect(() => {
       console.error('Error setting up contract listeners:', error);
     }
   };
-
+  
     // Call setup function
     setupContractListeners();
-
-    // Cleanup function
+  
+    // Cleanup function with better error handling
     return () => {
       console.log('Cleaning up event listeners');
       isCleanedUp = true;
       
       const cleanup = async () => {
         try {
-          const { lendingProtocol } = await getContracts(provider);
-          lendingProtocol.removeAllListeners();
-          apiManager.removeAllListeners();
+          if (!provider) return;
+          
+          try {
+            const { lendingProtocol } = await getContracts(provider);
+            lendingProtocol?.removeAllListeners(); // Use optional chaining
+            apiManager?.removeAllListeners(); // Use optional chaining
+          } catch (error) {
+            console.error('Error during event listener cleanup:', error);
+            // Continue with other cleanup even if this fails
+          }
         } catch (error) {
           console.error('Error during cleanup:', error);
         }
       };
       
-      cleanup();
+      cleanup().catch(console.error); // Handle promise rejection
       
       // Clear all timeouts and processing states
       processQueue.forEach((timeoutId) => clearTimeout(timeoutId));
@@ -475,19 +555,9 @@ useEffect(() => {
               provider={provider}
               onConnect={handleWalletConnection}
               onTransactionError={handleTransactionError}
+              onNetworkChange={handleNetworkChange} // Add this prop
             />
           </div>
-
-          <div>
-            <RiskMonitor
-              apiManager={apiManager}
-              userAddress={account}
-            />
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <ProtocolStatistics apiManager={apiManager} />
         </div>
       </div>
     </div>

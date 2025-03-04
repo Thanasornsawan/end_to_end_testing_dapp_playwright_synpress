@@ -17,6 +17,7 @@ interface DepositWithdrawTabProps {
     loadUserPosition: (userAddress: string, web3Provider: ethers.providers.Web3Provider) => Promise<void>;
     loadBalances: () => Promise<void>;
     logAction: (action: string, details: any) => void;
+    setTransactionInProgress: (inProgress: boolean) => void;
 }
 
 const DepositWithdrawTab: React.FC<DepositWithdrawTabProps> = ({
@@ -29,7 +30,8 @@ const DepositWithdrawTab: React.FC<DepositWithdrawTabProps> = ({
     getSimplifiedErrorMessage,
     loadUserPosition,
     loadBalances,
-    logAction
+    logAction,
+    setTransactionInProgress
 }) => {
     const [depositAmount, setDepositAmount] = React.useState('');
     const [withdrawAmount, setWithdrawAmount] = React.useState('');
@@ -38,6 +40,10 @@ const DepositWithdrawTab: React.FC<DepositWithdrawTabProps> = ({
         if (!provider || !depositAmount || !wethAddress) return;
         setLoading(true);
         setError('');
+
+        // Set transaction in progress to pause price fetching
+        setTransactionInProgress(true);
+
         try {
             logAction('DEPOSIT_STARTED', { amount: depositAmount });
             const { lendingProtocol } = await getContracts(provider);
@@ -74,17 +80,41 @@ const DepositWithdrawTab: React.FC<DepositWithdrawTabProps> = ({
                 txHash: receipt.transactionHash 
             });
 
+            // Add manual logging call to the database
+            const { logUserActivity } = await import('../../services/database');
+            // Get current chain ID
+            const network = await provider.getNetwork();
+            const currentChainId = network.chainId;
+            await logUserActivity(
+                account,
+                'DEPOSIT',
+                depositAmount,
+                new Date(),
+                receipt.transactionHash,
+                receipt.blockNumber,
+                wethAddress || 'unknown',
+                currentChainId
+            );
+            console.log('Deposit activity logged to database successfully');
+
         } catch (err) {
             console.error('Deposit failed:', err);
             setError(getSimplifiedErrorMessage(err));
+        } finally {
+            // Always make sure to reset the transaction status
+            setTransactionInProgress(false);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleWithdraw = async () => {
         if (!provider || !withdrawAmount || !wethAddress) return;
         setLoading(true);
         setError('');
+
+        // Set transaction in progress to pause price fetching
+        setTransactionInProgress(true);
+
         try {
             logAction('WITHDRAW_STARTED', { amount: withdrawAmount });
             const { lendingProtocol } = await getContracts(provider);
@@ -115,27 +145,60 @@ const DepositWithdrawTab: React.FC<DepositWithdrawTabProps> = ({
                 txHash: receipt.transactionHash
             });
         
+            // Add manual logging call to the database
+            const { logUserActivity } = await import('../../services/database');
+            // Get current chain ID
+            const network = await provider.getNetwork();
+            const currentChainId = network.chainId;
+            await logUserActivity(
+                account,
+                'WITHDRAW',
+                withdrawAmount,
+                new Date(),
+                receipt.transactionHash,
+                receipt.blockNumber,
+                wethAddress || 'unknown',
+                currentChainId
+            );
+
             await loadUserPosition(account, provider);
             await loadBalances(); 
             setWithdrawAmount('');
         } catch (err) {
             console.error('Withdrawal failed:', err);
             setError(getSimplifiedErrorMessage(err));
+        } finally {
+            // Always make sure to reset the transaction status
+            setTransactionInProgress(false);
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (
         <div className="space-y-4">
             <div className="space-y-2">
-                <Input
-                    type="number"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    placeholder="Amount to deposit"
-                    disabled={loading}
-                    data-testid="deposit-input"
-                />
+            <Input
+                type="number"
+                value={depositAmount}
+                onChange={(e) => {
+                    // Only allow positive values or empty string
+                    const value = e.target.value;
+                    if (value === '' || parseFloat(value) >= 0) {
+                        setDepositAmount(value);
+                    }
+                }}
+                onKeyDown={(e) => {
+                    // Prevent entering negative sign
+                    if (e.key === '-' || e.key === 'e') {
+                        e.preventDefault();
+                    }
+                }}
+                min="0"
+                step="any"
+                placeholder="Amount to deposit"
+                disabled={loading}
+                data-testid="deposit-input"
+            />
                 <Button 
                     onClick={handleDeposit} 
                     disabled={loading}
@@ -147,13 +210,27 @@ const DepositWithdrawTab: React.FC<DepositWithdrawTabProps> = ({
             </div>
 
             <div className="space-y-2">
-                <Input
-                    type="number"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    placeholder="Amount to withdraw"
-                    disabled={loading}
-                />
+            <Input
+                type="number"
+                value={withdrawAmount}
+                onChange={(e) => {
+                    // Only allow positive values or empty string
+                    const value = e.target.value;
+                    if (value === '' || parseFloat(value) >= 0) {
+                        setWithdrawAmount(value);
+                    }
+                }}
+                onKeyDown={(e) => {
+                    // Prevent entering negative sign
+                    if (e.key === '-' || e.key === 'e') {
+                        e.preventDefault();
+                    }
+                }}
+                min="0"
+                step="any"
+                placeholder="Amount to withdraw"
+                disabled={loading}
+            />
                 <Button 
                     onClick={handleWithdraw} 
                     disabled={loading}

@@ -39,7 +39,8 @@ export const logUserActivity = async (
     timestamp: Date,
     txHash: string,
     blockNumber: number,
-    token: string
+    token: string,
+    chainId?: number
   ): Promise<void> => {
     try {
       // Make sure txHash is not undefined before sending
@@ -68,7 +69,8 @@ export const logUserActivity = async (
             timestamp: timestamp.toISOString(),
             txHash,
             blockNumber,
-            token
+            token,
+            chainId
           }
         })
       });

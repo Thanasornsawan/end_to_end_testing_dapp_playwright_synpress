@@ -17,6 +17,19 @@ export class LiquidationFeature {
         this.screenshotHelper = new ScreenshotHelper();
     }
 
+    async verifyNoLiquidateDisplay(): Promise<void> {
+        // Navigate to the liquidate tab
+        await this.lendingPage.switchToLiquidateTab();
+            
+        // Wait for positions to load
+        await this.page.waitForTimeout(1000);
+
+        // Check that the own position element does NOT exist
+        await expect(this.page.getByTestId('own-liquidatable-position')).not.toBeVisible();
+
+        // Check that the "No positions" message IS visible
+        await expect(this.page.getByText('No positions available for liquidation at this time.')).toBeVisible();
+    }
     /**
      * Verify that the user's own position is shown as liquidatable but cannot be liquidated by themselves
      */

@@ -710,7 +710,21 @@ const StakingTab: React.FC<{
                 <Input
                     type="number"
                     value={stakeAmount}
-                    onChange={(e) => setStakeAmount(e.target.value)}
+                    onChange={(e) => {
+                        // Only allow positive values or empty string
+                        const value = e.target.value;
+                        if (value === '' || parseFloat(value) >= 0) {
+                            setStakeAmount(value);
+                        }
+                    }}
+                    onKeyDown={(e) => {
+                        // Prevent entering negative sign
+                        if (e.key === '-' || e.key === 'e') {
+                            e.preventDefault();
+                        }
+                    }}
+                    min="0"
+                    step="any"
                     placeholder="Amount of WETH to stake"
                     disabled={loading}
                 />
@@ -727,7 +741,21 @@ const StakingTab: React.FC<{
                 <Input
                     type="number"
                     value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    onChange={(e) => {
+                        // Only allow positive values or empty string
+                        const value = e.target.value;
+                        if (value === '' || parseFloat(value) >= 0) {
+                            setWithdrawAmount(value);
+                        }
+                    }}
+                    onKeyDown={(e) => {
+                        // Prevent entering negative sign
+                        if (e.key === '-' || e.key === 'e') {
+                            e.preventDefault();
+                        }
+                    }}
+                    min="0"
+                    step="any"
                     placeholder="Amount of WETH to withdraw"
                     disabled={loading}
                 />

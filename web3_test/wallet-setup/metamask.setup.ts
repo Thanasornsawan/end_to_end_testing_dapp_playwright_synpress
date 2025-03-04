@@ -12,9 +12,17 @@ export default defineWalletSetup(PASSWORD, async (context, walletPage) => {
 
   await metamask.importWallet(SEED_PHRASE)
 
-  // Add Hardhat network after wallet import
+  // Add Optimism network (L2)
   await metamask.addNetwork({
-    name: 'hardhat',
+    name: 'Local Optimism',
+    rpcUrl: 'http://127.0.0.1:8546',
+    chainId: 420,
+    symbol: 'ETH'
+  });
+
+  // Add Ethereum Hardhat network (L1)
+  await metamask.addNetwork({
+    name: 'Local Ethereum',
     rpcUrl: 'http://127.0.0.1:8545',
     chainId: 31337,
     symbol: 'ETH'

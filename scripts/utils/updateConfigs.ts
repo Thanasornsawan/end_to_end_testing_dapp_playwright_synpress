@@ -12,6 +12,8 @@ export function updateContractConfigs(
         priceOracle: string;
         apiManager: string;
         stakingPool: string;
+        delegateManager?: string;
+        autoRebalancer?: string;
     }
 ) {
     // Update networks.json
@@ -52,7 +54,9 @@ export function updateContractConfigs(
             enhancedLendingProtocol: addresses.enhancedLendingProtocol,
             priceOracle: addresses.priceOracle,
             apiManager: addresses.apiManager,
-            stakingPool: addresses.stakingPool
+            stakingPool: addresses.stakingPool,
+            delegateManager: addresses.delegateManager || '',
+            autoRebalancer: addresses.autoRebalancer || ''
         }
     };
 
@@ -65,7 +69,8 @@ export const CONTRACT_ADDRESSES = ${JSON.stringify(updatedAddresses, null, 2)};
 
 export const CHAIN_IDS = {
     local: 31337,
-    mainnet: 1
+    mainnet: 1,
+    optimismFork: 420
 };
 
 export interface ContractAddresses {
@@ -76,18 +81,58 @@ export interface ContractAddresses {
     apiManager: string;
     lendingProtocol?: string;
     stakingPool: string;
+    delegateManager?: string;
+    autoRebalancer?: string;
 }
 
-export function getContractAddresses(chainId: number): ContractAddresses {
+export function getContractAddresses(chainId: number, networkName?: string): ContractAddresses {
+    // If networkName is provided and indicates Optimism fork, use optimism addresses
+    if (networkName && networkName.toLowerCase().includes('optimism')) {
+        return CONTRACT_ADDRESSES.optimism;
+    }
+    
+    // Otherwise use chain ID
     switch (chainId) {
         case CHAIN_IDS.local:
             return CONTRACT_ADDRESSES.local;
         case CHAIN_IDS.mainnet:
             return CONTRACT_ADDRESSES.mainnet;
         default:
-            throw new Error(\`Unsupported chain ID: \${chainId}\`);
+            // Fallback to local if unknown
+            return CONTRACT_ADDRESSES.local;
     }
 }
+
+// Helper function to check if a network is a Layer 2
+export function isLayer2Network(chainId: number, networkName?: string): boolean {
+  // Check if networkName indicates an Optimism network
+  if (networkName && networkName.toLowerCase().includes('optimism')) {
+    return true;
+  }
+  
+  // Otherwise, not a Layer 2
+  return false;
+}
+
+// Get network name from chain ID
+export function getNetworkName(chainId: number, networkName?: string): string {
+  // If networkName is provided and indicates Optimism, return 'Local Optimism'
+  if (networkName && networkName.toLowerCase().includes('optimism')) {
+    return 'Local Optimism';
+  }
+  
+  switch (chainId) {
+      case CHAIN_IDS.local:
+          return 'Local Ethereum';
+      case CHAIN_IDS.mainnet:
+          return 'Ethereum Mainnet';
+      case CHAIN_IDS.optimismFork:
+            return 'Local Optimism'
+      default:
+          return 'Unknown Network';
+  }
+}
+
 `;
 
     fs.writeFileSync(contractsPath, contractsTemplate);

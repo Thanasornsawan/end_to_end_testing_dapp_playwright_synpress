@@ -19,6 +19,7 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
     // Roles
     bytes32 public constant LIQUIDATOR_ROLE = keccak256("LIQUIDATOR_ROLE");
     bytes32 public constant ORACLE_MANAGER = keccak256("ORACLE_MANAGER");
+    bytes32 public constant DELEGATE_ROLE = keccak256("DELEGATE_ROLE");
 
     // State variables
     IPriceOracle public priceOracle;
@@ -94,6 +95,7 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(LIQUIDATOR_ROLE, msg.sender);
         _setupRole(ORACLE_MANAGER, msg.sender);
+        _setupRole(DELEGATE_ROLE, msg.sender);
     }
     
     /**
@@ -765,6 +767,67 @@ contract EnhancedLendingProtocol is ReentrancyGuard, Pausable, AccessControl {
 
         if (totalBorrowValue == 0) return type(uint256).max;
         return totalCollateralValue.mul(BASIS_POINTS).div(totalBorrowValue);
+    }
+
+    /**
+     * @notice Borrow tokens on behalf of another user (requires delegation)
+     * @param borrower The address of the user who owns the collateral
+     * @param token The token to borrow
+     * @param amount The amount to borrow
+     */
+    function borrowBehalf(
+        address borrower, 
+        address token, 
+        uint256 amount
+    )
+        external
+        nonReentrant
+        whenNotPaused
+        onlyValidToken(token)
+    {
+        require(borrower != address(0), "Invalid borrower address");
+        require(amount > 0, "Amount must be > 0");
+        
+        // Verify caller has permission to borrow on behalf (must have DELEGATE_ROLE)
+        require(
+            hasRole(DELEGATE_ROLE, msg.sender), 
+            "Caller not authorized"
+        );
+        
+        // Update interest
+        updateGlobalInterest(token);
+        updateUserInterest(token, borrower);
+        
+        // Check health factor
+        require(getHealthFactor(borrower) >= BASIS_POINTS, "Insufficient collateral");
+        
+        // Update borrower's position
+        UserPosition storage position = userPositions[token][borrower];
+        position.borrowAmount = position.borrowAmount.add(amount);
+        
+        // If this is first borrow, initialize borrower's interest index
+        if (position.interestIndex == 0) {
+            uint256 currentIndex = globalInterestIndices[token];
+            if (currentIndex == 0) {
+                currentIndex = INITIAL_INTEREST_INDEX;
+                globalInterestIndices[token] = currentIndex;
+                lastGlobalUpdate[token] = block.timestamp;
+            }
+            position.interestIndex = currentIndex;
+        }
+        
+        // Update total borrows
+        totalBorrows[token] = totalBorrows[token].add(amount);
+        
+        // Transfer tokens to delegate (not borrower)
+        if (token == address(weth)) {
+            require(weth.transfer(msg.sender, amount), "WETH transfer failed");
+        } else {
+            require(IERC20(token).transfer(msg.sender, amount), "Transfer failed");
+        }
+        
+        // Emit borrow event with borrower as the user
+        emit Borrow(token, borrower, amount, position.interestIndex);
     }
 
     receive() external payable {

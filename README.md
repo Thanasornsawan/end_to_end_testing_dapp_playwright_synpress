@@ -104,14 +104,31 @@ npx synpress wallet-setup
 ```
 ![wallet](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/wallet_setup.gif?raw=true)
 
+5. Setup anvil (for custom network chainId and gas)
+```bash
+curl -L https://foundry-paradigm.xyz
+foundryup
+```
+![anvil](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/setup_anvil.png?raw=true)
+
 ### How to run project locally (DApp test cases)
 
 ```sh
-# Terminal 1: Start local network
+# Terminal 1: Start local network (if you want to test single network on local)
 npx hardhat node
 
-# Terminal 2: Deploy smart contract to local network
-npx hardhat run scripts/deploy/deployAndUpdateAddresses.ts --network local
+# or use anvil to start 2 networks in the same time by custom script
+node scripts/utils/run-local-l1-l2.js
+```
+
+![anvil_script1](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/anvil1.png?raw=true)
+![anvil_script2](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/anvil2.png?raw=true)
+![anvil_script3](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/anvil3.png?raw=true)
+
+```sh
+# Terminal 2: Deploy smart contract to both network
+npx hardhat run scripts/deploy/deploy-l1.ts --network mainnetFork 
+npx hardhat run scripts/deploy/deploy-l2.ts --network optimismFork
 
 # Terminal 3: Start the front-end server (localhost:3000)
 cd frontend & npm run dev
@@ -159,6 +176,7 @@ npm run test:main_network_fork_report
 - [Synpress](https://synpress.io/)
 - [MetaMask](https://metamask.io/)
 - [Hardhat](https://hardhat.org/docs)
+- [Anvil](https://book.getfoundry.sh/reference/anvil/)
 
 ### Blog
 [QA Blockchain Testing: Smart Contract & Network Performance with Hardhat](https://medium.com/coinmonks/qa-blockchain-testing-smart-contract-network-performance-with-hardhat-d01e99e331e7)

@@ -12,15 +12,21 @@ async function getBlockNumber() {
   // ✅ Polygon provider
   const polygonProvider = new ethers.providers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
   const polygonBlockNumber = await polygonProvider.getBlockNumber();
+  
+  // ✅ Optimism provider
+  const optimismProvider = new ethers.providers.JsonRpcProvider(process.env.OPTIMISM_RPC_URL);
+  const optimismBlockNumber = await optimismProvider.getBlockNumber();
 
-  // ✅ Logging the block numbers for both networks
+  // ✅ Logging the block numbers for all networks
   console.log(`Mainnet Block Number: ${mainnetBlockNumber}`);
   console.log(`Polygon Block Number: ${polygonBlockNumber}`);
+  console.log(`Optimism Block Number: ${optimismBlockNumber}`);
 
   // ✅ Creating blockConfig object
   const blockConfig = {
     mainnet: mainnetBlockNumber,
     polygon: polygonBlockNumber,
+    optimism: optimismBlockNumber,
     timestamp: new Date().toISOString(),
   };
 

@@ -30,6 +30,11 @@ export default class LendingPage extends BasePage {
     readonly currentAccountAddress: Locator;
     readonly liquidationDetailsCard: Locator;
     readonly cancelLiquidationButton: Locator;
+    readonly networkBadge: Locator;
+    readonly networkSelector: Locator;
+    readonly networkSelectorTrigger: Locator;
+    readonly switchingNetworksAlert: Locator;
+    readonly loadingPositionDataAlert: Locator;
 
   constructor(page: Page, metamask: MetaMask) {
     super(page, metamask);
@@ -59,6 +64,11 @@ export default class LendingPage extends BasePage {
     this.currentAccountAddress = page.getByRole('button', { name: TestData.SELECTORS.BUTTONS.CONNECTED_WALLET });
     this.liquidationDetailsCard = page.getByTestId('liquidation-details');
     this.cancelLiquidationButton = page.getByTestId('cancel-liquidation');
+    this.networkBadge = page.getByTestId('network-badge');
+    this.networkSelector = page.getByTestId('network-select');
+    this.networkSelectorTrigger = page.getByTestId('network-select-trigger');
+    this.switchingNetworksAlert = page.getByText('Switching networks... Please wait.');
+    this.loadingPositionDataAlert = page.getByText('Loading position data...');
   }
 
   // Connect wallet actions
@@ -394,4 +404,81 @@ export default class LendingPage extends BasePage {
     
     return parseFloat(matches[1]);
   }
+
+  /**
+ * Open the network selector dropdown
+ */
+  async openNetworkSelector(): Promise<void> {
+    await this.networkSelectorTrigger.click();
+    await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+  }
+  
+  /**
+   * Select a network from the dropdown by chain ID
+   */
+  async selectNetwork(chainId: number): Promise<void> {
+    // The network selector option has a data-testid with the chainId
+    const networkOption = this.page.getByTestId(`network-option-${chainId}`);
+    await networkOption.click();
+    await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+  }
+
+  /**
+ * Wait for the "Switching networks..." alert to appear
+ */
+async waitForSwitchingNetworksAlert(timeout: number = 5000): Promise<void> {
+    try {
+      await this.switchingNetworksAlert.waitFor({ state: 'visible', timeout });
+      await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+    } catch (error) {
+      console.log('Switching networks alert did not appear within timeout');
+    }
+  }
+  
+  /**
+   * Wait for the "Switching networks..." alert to disappear
+   */
+  async waitForSwitchingNetworksAlertToDisappear(timeout: number = 30000): Promise<void> {
+    try {
+      await this.switchingNetworksAlert.waitFor({ state: 'hidden', timeout });
+      await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+    } catch (error) {
+      console.log('Switching networks alert did not disappear within timeout');
+      throw new Error('Network switching did not complete within the expected time');
+    }
+  }
+  
+  /**
+   * Wait for the "Loading position data..." alert to disappear
+   */
+  async waitForLoadingPositionDataToDisappear(timeout: number = 20000): Promise<void> {
+    try {
+      // First check if the alert is visible at all
+      const isVisible = await this.loadingPositionDataAlert.isVisible();
+      
+      if (isVisible) {
+        // If it is visible, wait for it to disappear
+        await this.loadingPositionDataAlert.waitFor({ state: 'hidden', timeout });
+      }
+      await this.waitForTimeout(TestData.TIMEOUTS.SHORT);
+    } catch (error) {
+      console.log('Loading position data alert did not disappear within timeout');
+    }
+  }
+
+  /**
+  * Verify that the network badge displays the expected network name
+  */
+  async verifyNetworkBadgeDisplays(expectedNetworkName: string): Promise<void> {
+    await expect(this.networkBadge).toContainText(expectedNetworkName);
+   }
+
+  /**
+ * Verify that the network selector displays the expected network name
+ */
+async verifyNetworkSelectorDisplays(expectedNetworkName: string): Promise<void> {
+    // Check the content of the network selector trigger
+    await expect(this.networkSelectorTrigger).toContainText(expectedNetworkName);
+  }
+
 }

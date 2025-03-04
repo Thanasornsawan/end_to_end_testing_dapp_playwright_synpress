@@ -10,6 +10,24 @@ export const TestData = {
             ACCOUNT_ADDRESS: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
         }
     },
+    NETWORK_LIST: {
+        NETWORK_ETH: {
+            NETWORK_NAME: 'Local Ethereum',
+            CHAIN_ID: 31337
+        },
+        NETWORK_OPTIMISM: {
+            NETWORK_NAME: 'Local Optimism',
+            CHIAN_ID: 420
+        }
+    },
+    EVENT_NAME: {
+        DEPOSIT_EVENT: 'DEPOSIT',
+        WITHDRAW_EVENT: 'WITHDRAW',
+        BORROW_EVENT: 'BORROW',
+        REPAY_EVENT: 'REPAY',
+        FULL_REPAY_EVENT: 'FULL_REPAY',
+        LIQUIDATE_EVENT: 'LIQUIDATE'
+    },
     MESSAGES: {
         REPAYMENT: {
             SUCCESS: 'Full repayment successful'

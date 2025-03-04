@@ -2,6 +2,8 @@ import { HardhatUserConfig, task } from "hardhat/config";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import "@nomiclabs/hardhat-waffle";
 import "@nomiclabs/hardhat-ethers";
+import "@eth-optimism/hardhat-ovm";
+import "@nomicfoundation/hardhat-network-helpers";
 import "@typechain/hardhat";
 import "@nomiclabs/hardhat-etherscan";
 import "hardhat-gas-reporter";
@@ -47,7 +49,6 @@ const HARDHAT_TEST_ACCOUNTS = [
 ];
 
 const config: CustomHardhatConfig = {
- 
   solidity: {
     version: "0.8.28",
     settings: {
@@ -58,10 +59,29 @@ const config: CustomHardhatConfig = {
       viaIR: true  // Enable IR-based code generation
     },
   },
-   networks: {
-    // ✅ Forked Ethereum Mainnet (no real gas needed)
+  networks: {
+    // Local Hardhat network with a unique chain ID
+    hardhat: {
+      chainId: 31337,
+    },
+    local: {
+      url: process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545",
+      chainId: 31337, // Changed from 31337 to avoid conflict
+    },
+    // Forked Optimism network with a distinct chain ID
+    optimismFork: {
+      url: "http://127.0.0.1:8546",
+      chainId: 420,
+      accounts: HARDHAT_TEST_ACCOUNTS,
+      forking: {
+        url: `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+        blockNumber: blockNumbers.optimism || 111000000,
+        enabled: true,
+      },
+    },
+    // Other network configurations remain the same
     mainnetFork: {
-      url: "http://127.0.0.1:8545",  // Point to local fork
+      url: "http://127.0.0.1:8545",
       accounts: HARDHAT_TEST_ACCOUNTS,
       forking: {
         url: process.env.MAINNET_RPC_URL || "",
@@ -69,24 +89,18 @@ const config: CustomHardhatConfig = {
         enabled: true,
       },
     },
-     local: {
-       url: process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545",
-       chainId: 31337,
-     },
-    // ✅ Real Ethereum Mainnet (uses real ETH)
     mainnet: {
       url: process.env.MAINNET_RPC_URL || "",
       accounts: [process.env.MAINNET_PRIVATE_KEY || ""],
       chainId: 1,
     },
-     polygon: {
-       url: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-       accounts: [process.env.POLYGON_PRIVATE_KEY || ""],
-       chainId: 137,
-     },
-    // ✅ Forked Polygon Mainnet (no real gas needed)
+    polygon: {
+      url: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
+      accounts: [process.env.POLYGON_PRIVATE_KEY || ""],
+      chainId: 137,
+    },
     polygonFork: {
-      url: process.env.POLYGON_RPC_URL || "", // Add this line
+      url: process.env.POLYGON_RPC_URL || "",
       forking: {
         url: process.env.POLYGON_RPC_URL || "",
         blockNumber: blockNumbers.polygon,
@@ -96,19 +110,20 @@ const config: CustomHardhatConfig = {
       url: process.env.SEPOLIA_RPC_URL || "",
       accounts: [process.env.SEPOLIA_PRIVATE_KEY || ""],
       chainId: 11155111,
-    },    
+    },
   },
-   gasReporter: {
-     enabled: process.env.REPORT_GAS !== undefined,
-     currency: "USD",
-     L1Etherscan: process.env.ETHERSCAN_API_KEY,
-     coinmarketcap: process.env.COINMARKETCAP_API_KEY,
-     excludeContracts: ["contracts/mocks/", "contracts/libraries/"],
-     outputJSONFile: "gas-reports/hardhat-gas-report.json",
-     outputJSON: true,
-     noColors: true,
-   },
-   typechain: {
+  // Rest of the configuration remains the same
+  gasReporter: {
+    enabled: process.env.REPORT_GAS !== undefined,
+    currency: "USD",
+    L1Etherscan: process.env.ETHERSCAN_API_KEY,
+    coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+    excludeContracts: ["contracts/mocks/", "contracts/libraries/"],
+    outputJSONFile: "gas-reports/hardhat-gas-report.json",
+    outputJSON: true,
+    noColors: true,
+  },
+  typechain: {
     outDir: "typechain",
     target: "ethers-v5",
     alwaysGenerateOverloads: false,
@@ -116,19 +131,19 @@ const config: CustomHardhatConfig = {
     tsNocheck: false,
     dontOverrideCompile: false
   },
-   paths: {
-     sources: "./contracts",
-     tests: "./test",
-     cache: "./cache",
-     artifacts: "./artifacts",
-   },
-   etherscan: {
-     apiKey: {
-       mainnet: process.env.ETHERSCAN_API_KEY || "",
-       polygon: process.env.POLYGONSCAN_API_KEY || "",
-     },
-   },
-   mocha: {
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
+  },
+  etherscan: {
+    apiKey: {
+      mainnet: process.env.ETHERSCAN_API_KEY || "",
+      polygon: process.env.POLYGONSCAN_API_KEY || "",
+    },
+  },
+  mocha: {
     reporter: 'mocha-multi-reporters',
     reporterOptions: {
       reporterEnabled: 'mochawesome,mocha-ctrf-json-reporter',
