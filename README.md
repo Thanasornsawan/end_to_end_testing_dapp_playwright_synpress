@@ -20,6 +20,23 @@ This project is perfect for **QA engineers, blockchain testers, and developers**
 
 🔹 If you find this repo useful, **please ⭐ star it** to support the project!
 
+## Project Structure Overview
+The project is organized into three main sections, each with its own dependencies and functionality:
+
+```sh
+E2E_blockchain_testing/
+├── contracts/                  # Smart contract code (Solidity)
+├── scripts/                    # Deployment and utility scripts
+├── test/                       # Backend tests for smart contracts
+├── frontend/                   # React/Next.js frontend application
+├── web3_test/                  # Playwright/Synpress E2E tests
+├── services/                   # Shared services
+├── prisma/                     # Database schema and migrations
+├── hardhat.config.ts           # Hardhat configuration
+└── package.json                # Backend package configuration
+```
+
+
 ### 🛠️ How to Setup project 🛠️
 
 1. Install dependencies:
