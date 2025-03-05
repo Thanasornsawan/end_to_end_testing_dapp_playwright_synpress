@@ -126,6 +126,7 @@ async function startNetworks() {
     '--base-fee', gasPrices.l1.baseFee.toString(), // Normal L1 base fee
     '--host', '0.0.0.0',
     '--port', '8545',
+    '--block-time', '12', // Simulate 12-second block times for Ethereum
     '--fork-url', `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
     mainnetBlockNumber ? `--fork-block-number=${mainnetBlockNumber}` : ''
   ].filter(Boolean), {
@@ -147,8 +148,8 @@ async function startNetworks() {
   setTimeout(() => {
     // IMPORTANT: Force L2 gas price to be a fixed percentage of L1
     // This ensures L2 is always cheaper than L1
-    const forcedL2GasPrice = Math.floor(gasPrices.l1.gasPrice * OPTIMISM_RATIO);
-    const forcedL2BaseFee = Math.floor(gasPrices.l1.baseFee * OPTIMISM_RATIO);
+    let forcedL2GasPrice = Math.floor(gasPrices.l1.gasPrice * OPTIMISM_RATIO);
+    let forcedL2BaseFee = Math.floor(gasPrices.l1.baseFee * OPTIMISM_RATIO);
     
     // Double-check that L2 gas price is lower than L1
     if (forcedL2GasPrice >= gasPrices.l1.gasPrice) {
@@ -161,9 +162,10 @@ async function startNetworks() {
     
     const l2Node = spawn('anvil', [
       '--chain-id', '420',
-      '--base-fee', Math.floor(gasPrices.l1.baseFee * OPTIMISM_RATIO).toString(), // 1% of L1 base fee
+      '--base-fee', forcedL2BaseFee.toString(),
       '--host', '0.0.0.0',
       '--port', '8546',
+      '--block-time', '2', // Simulate 2-second block times for Optimism
       '--fork-url', `https://opt-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
       optimismBlockNumber ? `--fork-block-number=${optimismBlockNumber}` : ''
     ].filter(Boolean), {

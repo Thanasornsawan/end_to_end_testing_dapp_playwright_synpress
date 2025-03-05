@@ -35,6 +35,7 @@ export default class LendingPage extends BasePage {
     readonly networkSelectorTrigger: Locator;
     readonly switchingNetworksAlert: Locator;
     readonly loadingPositionDataAlert: Locator;
+    readonly liquidateEmptyText: Locator;
 
   constructor(page: Page, metamask: MetaMask) {
     super(page, metamask);
@@ -69,6 +70,7 @@ export default class LendingPage extends BasePage {
     this.networkSelectorTrigger = page.getByTestId('network-select-trigger');
     this.switchingNetworksAlert = page.getByText('Switching networks... Please wait.');
     this.loadingPositionDataAlert = page.getByText('Loading position data...');
+    this.liquidateEmptyText = page.getByText('No positions available for liquidation at this time.');
   }
 
   // Connect wallet actions
@@ -296,7 +298,19 @@ export default class LendingPage extends BasePage {
     await expect(this.ownLiquidatablePosition).toBeVisible();
     
     // Verify it contains "Your Position" text
-    await expect(this.ownLiquidatablePosition.getByText('Your Position')).toBeVisible();
+    const yourPositionBadge = this.ownLiquidatablePosition.getByRole('status')
+        .or(this.ownLiquidatablePosition.getByText('Your Position', { exact: true }))
+        .or(this.ownLiquidatablePosition.locator('[role="status"]:has-text("Your Position")'));
+            
+    await expect(yourPositionBadge).toBeVisible();
+  }
+
+  async verifyNoliquidateDisplay(): Promise<void> {
+    // Check that the own position element does NOT exist
+    await expect(this.ownLiquidatablePosition).not.toBeVisible();
+
+    // Check that the "No positions" message is visible
+    await expect(this.liquidateEmptyText).toBeVisible();
   }
 
   /**
@@ -305,11 +319,13 @@ export default class LendingPage extends BasePage {
   async verifyOwnPositionNotSelectable(): Promise<void> {
     // Check that the own position has the disabled attribute or proper aria role
     const isDisabled = await this.ownLiquidatablePosition.evaluate(node => {
-      return (
-        node.getAttribute('aria-disabled') === 'true' ||
-        node.getAttribute('data-disabled') === 'true' ||
-        node.hasAttribute('disabled')
-      );
+        return (
+            node.hasAttribute('disabled') ||
+            node.getAttribute('aria-disabled') === 'true' ||
+            node.hasAttribute('data-disabled') ||  
+            getComputedStyle(node).pointerEvents === 'none' ||
+            parseFloat(getComputedStyle(node).opacity) < 1  
+        );
     });
     
     expect(isDisabled).toBeTruthy();

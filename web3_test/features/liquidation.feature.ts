@@ -18,18 +18,17 @@ export class LiquidationFeature {
     }
 
     async verifyNoLiquidateDisplay(): Promise<void> {
-        // Navigate to the liquidate tab
-        await this.lendingPage.switchToLiquidateTab();
-            
-        // Wait for positions to load
-        await this.page.waitForTimeout(1000);
+        await test.step('verify no liquidate detail shows on account', async () => {
+            // Navigate to the liquidate tab
+            await this.lendingPage.switchToLiquidateTab();
+                
+            // Wait for positions to load
+            await this.page.waitForTimeout(1000);
 
-        // Check that the own position element does NOT exist
-        await expect(this.page.getByTestId('own-liquidatable-position')).not.toBeVisible();
-
-        // Check that the "No positions" message IS visible
-        await expect(this.page.getByText('No positions available for liquidation at this time.')).toBeVisible();
+            await this.lendingPage.verifyNoliquidateDisplay();
+        }, { box: true });
     }
+    
     /**
      * Verify that the user's own position is shown as liquidatable but cannot be liquidated by themselves
      */
@@ -51,35 +50,9 @@ export class LiquidationFeature {
                 body: positionsScreenshot,
                 contentType: 'image/png',
             });
-            
-            // Verify a position with "Your Position" badge exists
-            const ownPosition = this.page.getByTestId('own-liquidatable-position');
-            await expect(ownPosition).toBeVisible();
-            
-            // Look for the badge based on role and text content instead of CSS
-            // First, look for a Badge element with exact text "Your Position"
-            const yourPositionBadge = ownPosition.getByRole('status')
-                .or(ownPosition.getByText('Your Position', { exact: true }))
-                .or(ownPosition.locator('[role="status"]:has-text("Your Position")'));
-            
-            await expect(yourPositionBadge).toBeVisible();
-            
-            // Verify it's disabled using attributes rather than CSS classes
-            const isDisabled = await ownPosition.evaluate(node => {
-                return (
-                    node.hasAttribute('disabled') ||
-                    node.getAttribute('aria-disabled') === 'true' ||
-                    node.hasAttribute('data-disabled') ||  
-                    getComputedStyle(node).pointerEvents === 'none' ||
-                    parseFloat(getComputedStyle(node).opacity) < 1  
-                );
-            });
-            
-            expect(isDisabled).toBeTruthy();
-            
-            // Try to click it and verify no position details appear
-            await ownPosition.click();
-            await expect(this.page.getByTestId('liquidation-details')).not.toBeVisible();
+
+            await this.lendingPage.verifyOwnAddressInLiquidationList();
+            await this.lendingPage.verifyOwnPositionNotSelectable();
             
             // Take a screenshot for evidence
             const ownPositionScreenshot = await this.screenshotHelper.capturePageScreenshot(
