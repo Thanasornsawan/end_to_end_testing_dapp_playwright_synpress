@@ -197,5 +197,5 @@ npm run test:main_network_fork_report
 - [Anvil](https://book.getfoundry.sh/reference/anvil/)
 
 ### Blog
-[QA Blockchain Testing: Smart Contract & Network Performance with Hardhat](https://medium.com/coinmonks/qa-blockchain-testing-smart-contract-network-performance-with-hardhat-d01e99e331e7)
+[QA Blockchain Testing: Smart Contract & Network Performance with Hardhat](https://medium.com/coinmonks/qa-blockchain-testing-smart-contract-network-performance-with-hardhat-d01e99e331e7) <br/>
 [Guideline to be QA Web3: Complete E2E DeFi Project with Synpress (Playwright) and Hardhat/Anvil](https://medium.com/coinmonks/guideline-to-be-qa-web3-complete-e2e-defi-project-with-synpress-playwright-and-hardhat-anvil-5e3af494cca4)
