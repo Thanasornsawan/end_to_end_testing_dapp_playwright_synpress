@@ -176,7 +176,7 @@ or simulate time advance 30 day
 SIMULATE_30_DAYS=true npx hardhat run scripts/utils/simulate-time-passage.js --network local
 ```
 
-![e2e](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/e2e.gif?raw=true)
+![e2e](https://github.com/Thanasornsawan/E2E_blockchain_testing/blob/main/pictures/demo.gif?raw=true)
 
 ### Topic Node Tesing on smart contract (Defi)
 
