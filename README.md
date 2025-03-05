@@ -5,8 +5,9 @@ This repository provides a complete **end-to-end (E2E) testing setup** for a **D
 It covers:
 <br/>
 ✅ Smart contract deployment & interaction (Hardhat)  <br/>
+✅ Using Anvil to simulate different network and gas cost on local network <br/>
 ✅ Automated testing with **Synpress + Playwright** (MetaMask interaction included!)  <br/>
-✅ Local and **mainnet fork testing**  <br/>
+✅ Testing across Layer 1 (Ethereum) and Layer 2 (Optimism) networks  <br/>
 ✅ **Database integration testing** with PostgreSQL (Prisma ORM)  <br/>
 <br/>
 This project is perfect for **QA engineers, blockchain testers, and developers** who want to learn **end-to-end blockchain testing** using real-world tools. 🚀 <br/>
