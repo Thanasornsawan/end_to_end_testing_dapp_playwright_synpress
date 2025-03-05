@@ -279,12 +279,10 @@ export function setupWeb3Listeners(
 ) {
   if (typeof window !== 'undefined' && window.ethereum) {
     const handleAccountsChanged = (accounts: string[]) => {
-      // Reduce logging to only critical changes
       onAccountsChanged(accounts);
     };
 
     const handleChainChanged = (chainId: string) => {
-      // Reduce logging to only critical changes
       onChainChanged(chainId);
     };
 
